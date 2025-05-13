@@ -239,6 +239,50 @@ locales: {
 2. 在文章中使用相对路径引用，例如 `/Notes/images/your-image.jpg`
 3. 图片文件名建议使用英文和连字符，避免使用空格和特殊字符
 
+### 6. 修改首页导航链接
+
+首页导航链接在 `src/zh/README.md` 文件的 `projects` 部分定义：
+
+```yaml
+projects:
+  - icon: book
+    name: 八股文总结
+    desc: 系统性整理的面试知识点
+    link: /interview/
+
+  - icon: folder-open
+    name: 学习笔记
+    desc: 日常技术学习笔记
+    link: /notes/
+
+  # 其他链接...
+```
+
+#### 6.1 添加新链接
+
+按照现有格式添加新的项目块：
+
+```yaml
+  - icon: heart  # 图标名称，基于FontAwesome图标
+    name: 新链接名称  # 显示的链接名称
+    desc: 新链接描述信息  # 链接描述
+    link: /zh/your-link-path/  # 链接路径
+```
+
+可用的图标可以在 [Font Awesome 图标库](https://fontawesome.com/icons) 中查找。
+
+#### 6.2 删除链接
+
+删除对应的整个项目块即可。
+
+#### 6.3 修改链接
+
+修改现有项目块中的属性值即可。
+
+注意：`link` 属性应指向有效的页面路径，例如：
+- `/zh/posts/` - 指向中文博客文章列表
+- `/zh/about/` - 指向"关于我"页面
+
 ## 六、常见问题
 
 ### 1. 图片引用
