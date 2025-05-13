@@ -4,6 +4,7 @@ layout: Blog
 icon: house
 title: 博客主页
 heroImage: /logo.svg
+bgImage: /assets/images/cover1.jpg
 heroText: GYQ的技术博客
 heroFullScreen: true
 tagline: 记录学习历程，分享技术心得
@@ -29,7 +30,7 @@ projects:
   - icon: article
     name: 技术博文
     desc: 技术分享与心得体会
-    link: /posts/
+    link: /zh/posts/
 
   - icon: profile
     name: 关于我
