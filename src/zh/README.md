@@ -27,11 +27,6 @@ projects:
     desc: 个人项目与实践经验
     link: /projects/
 
-  - icon: article
-    name: 技术博文
-    desc: 技术分享与心得体会
-    link: /zh/posts/
-
   - icon: profile
     name: 关于我
     desc: 个人简介与联系方式
