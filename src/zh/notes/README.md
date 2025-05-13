@@ -1,6 +1,7 @@
 ---
 title: 学习笔记
 icon: folder-open
+article: false
 ---
 
 # 学习笔记
