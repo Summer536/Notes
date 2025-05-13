@@ -4,6 +4,7 @@ date: 2025-05-08
 readingTime: 60
 category:
   - CUDA
+  - 笔记
 tag:
   - 技术
   - GPU编程

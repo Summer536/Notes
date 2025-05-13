@@ -1,7 +1,9 @@
 ---
 title: 学习笔记
+index: false
 icon: folder-open
-article: false
+category:
+  - 笔记
 ---
 
 # 学习笔记

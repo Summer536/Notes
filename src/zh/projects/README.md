@@ -1,7 +1,9 @@
 ---
 title: 项目实践
+index: false
 icon: code
-article: false
+category:
+  - 项目
 ---
 
 # GPU加速图像处理系统

@@ -15,17 +15,17 @@ projects:
   - icon: book
     name: 八股文总结
     desc: 系统性整理的面试知识点
-    link: /interview/
+    link: /zh/interview/
 
   - icon: folder-open
     name: 学习笔记
     desc: 日常技术学习笔记
-    link: /notes/
+    link: /zh/notes/
 
   - icon: code
     name: 项目实践
     desc: 个人项目与实践经验
-    link: /projects/
+    link: /zh/projects/
 
   - icon: profile
     name: 关于我
