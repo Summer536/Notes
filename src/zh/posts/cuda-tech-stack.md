@@ -10,56 +10,82 @@ tag:
   - GPU编程
 ---
 
-# CUDA技术栈
+# CUDA技术栈知识点
 
-## 简介
-CUDA（Compute Unified Device Architecture）是NVIDIA推出的并行计算平台和编程模型，它能够显著提升计算性能。本文将介绍CUDA技术栈的主要组成部分和开发工具。
+## CUDA基础
+- CUDA核心知识
+  - 必须要会写CUDA，面试的时候手撕一定会存在
+  - 算子的手撕代码通常有：
+    - reduce
+        - [深入浅出GPU优化系列：reduce优化](https://zhuanlan.zhihu.com/p/426978026)
+        - [Github代码](https://github.com/Liu-xiandong/How_to_optimize_in_GPU/blob/master/README.md)
+        - [LeetCUDA](https://github.com/xlite-dev/LeetCUDA/tree/main/kernels/reduce)
+    - 矩阵乘（八股+可能手撕）
+        - [深入浅出GPU优化系列：GEMM优化（一）](https://zhuanlan.zhihu.com/p/435908830)
+        - [深入浅出GPU优化系列：GEMM优化（二）](https://zhuanlan.zhihu.com/p/442930482)   
+        - [CUDA乘终极优化指南](https://zhuanlan.zhihu.com/p/410278370)
+        - [CUDA SGEMM矩阵乘法优化笔记—从入门到cublas](https://zhuanlan.zhihu.com/p/518857175) 
+        - [LeetCUDA](https://github.com/xlite-dev/LeetCUDA/tree/main/kernels/hgemm)
+    - [x] softmax
+        - [LeetCUDA](https://github.com/xlite-dev/LeetCUDA/tree/main/kernels/softmax)
+    - [x] RMSNorm 
+        - [LeetCUDA](https://github.com/xlite-dev/LeetCUDA/tree/main/kernels/rms-norm)
+    - [x] layernorm
+    - [x] transpose
+  - **前两个算子**要熟练掌握
 
-## 核心组件
+- 面试经典问题
+  - 如何解决bank conflict？
+  - 写算子的时候如何进行roofline分析？
+  - compute bound还是memory bound的判断？
+  - 算子的fusion策略？
+  - tiling策略的优化？
 
-### 1. CUDA Runtime API
-- 高级API接口
-- 设备管理
-- 内存管理
-- 流和事件处理
+- [x] Flash Attention深入理解
+  - 目前有V1、V2、V3三个版本
+  - 一般考察八股文，某些组会要求手撕v1和v2（v3因复杂度高不太可能）
+  - 推荐熊猫视频的讲解资料
+  - 从naive softmax到safe max，再到online softmax，最后到flash attention的发展路径
 
-### 2. CUDA Driver API
-- 底层API接口
-- 更灵活的控制
-- 上下文管理
+- 编译链路
+  - CUDA到PTX到SASS这条链路至少得了解基本原理
 
-### 3. CUDA工具套件
-- NVIDIA CUDA Toolkit
-- CUDA编译器（NVCC）
-- 调试和性能分析工具
+## Cutlass框架
+- Cutlass（考察难度较高）
+  - 每一代芯片的tensorcore实现
+  - cute、swizzle、ldmatrix的用法
+  - 单精度、半精度矩阵乘的优化技术
+  - hopper架构的TMA、Wgmma以及fp8的用法
 
-## 开发环境搭建
+## NVIDIA基础库
+- cuBLAS和cuDNN
+  - 这些库的基本用法和接口
+  - 常用函数和性能优化方法
 
-### 基本要求
-1. NVIDIA GPU显卡
-2. 适配的CUDA Toolkit版本
-3. 合适的开发IDE
+## 性能分析工具
+- Profiler工具掌握
+  - Nsight System（Nsys profile）：系统级性能分析
+  - Nsight Compute（ncu）：内核级性能分析
+  - 如何分析和解读性能报告
 
-### 环境配置步骤
-1. 驱动程序安装
-2. CUDA Toolkit安装
-3. 环境变量配置
+## NVIDIA芯片架构
+- NV芯片架构的发展史
+  - 为什么TensorCore会发展到现在的形态？
+    - [Tensorcore介绍](https://github.com/chenzomi12/AISystem/tree/main/02Hardware/04NVIDIA)
+  - 从Volta到Turing到Ampere再到Hopper再到Blackwall的演进
+    - [Zomi视频](https://www.bilibili.com/video/BV1mm4y1C7fg?spm_id_from=333.788.videopod.sections&vd_source=f058beebb64c488b55915da416ee6086)
+  - 两大发展方向：
+    1. 计算算力提升
+    2. 访存的加速
+  - Hopper架构上加入TMA（张量内存访存单元）加速tensorcore的访存
 
-## 性能优化技巧
+## 内存访问层级
+- 内存访存层级理解
+  - Host memory到HBM到L2到L1到寄存器等访存流程
+  - 各级缓存的特点和应用
+  - 数据搬运优化技术
 
-### 1. 内存优化
-- 合理使用共享内存
-- 内存访问合并
-- 内存层次结构利用
-
-### 2. 并行优化
-- 线程块大小选择
-- 网格维度规划
-- 任务调度优化
-
-## 后续学习路径
-
-1. CUDA基础编程
-2. 并行算法设计
-3. 性能调优技术
-4. 实际项目实践
+## 学习资源
+- 重点学习谷歌HPC书签下的GitHub仓库
+- NVIDIA开发者文档
+- Cutlass官方文档和示例 
