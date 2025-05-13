@@ -13,7 +13,7 @@
 ```
 ---
 title: 文章标题
-date: 2023-10-30
+date: 2025-05-10  # 日期越新，排序越靠前
 category:
   - 分类1
   - 分类2
@@ -26,6 +26,7 @@ isOriginal: true
 ```
 
 特别说明：
+- `date`: 文章发布日期，用于排序，日期越新的文章排序越靠前
 - `cover`: 文章封面图片，可以从 `/assets/images/` 目录中选择
 - `isOriginal`: 是否为原创文章
 - 添加 `<!-- more -->` 标签可以控制文章在列表中的摘要显示长度
@@ -55,6 +56,46 @@ isOriginal: true
 def hello():
     print("Hello world")
 ​```
+```
+
+### 4. 将文章归类到不同分类
+
+网站有以下几个主要分类：
+- **学习笔记** - 存放在 `src/zh/notes/` 目录
+- **八股文总结** - 存放在 `src/zh/interview/` 目录
+- **项目实践** - 存放在 `src/zh/projects/` 目录
+
+#### 方法1: 在分类目录中创建文章
+
+直接在对应目录中创建Markdown文件。例如，要添加一篇学习笔记：
+
+```
+src/zh/notes/your-new-note.md
+```
+
+#### 方法2: 在posts目录创建并链接到分类
+
+1. 在 `src/zh/posts/` 目录创建文章
+2. 在对应分类的README.md中添加链接
+
+例如，要在学习笔记中添加一个链接：
+
+```markdown
+// 在 src/zh/notes/README.md 中添加
+- [新文章标题](/zh/posts/your-new-article.html) - 文章简介
+```
+
+#### 方法3: 使用category元数据自动分类
+
+在文章的元数据中设置适当的category，VuePress会自动将其归类：
+
+```yaml
+---
+title: 你的文章标题
+date: 2025-05-15
+category:
+  - 学习笔记  # 这将自动分类到"学习笔记"类别
+---
 ```
 
 ## 二、本地预览
