@@ -9,7 +9,7 @@ tag:
   - GPU优化
   - 大模型
   - 算法优化
-cover: /assets/images/cover1.jpg
+cover: /assets/images/cover3.jpg
 isOriginal: true
 ---
 

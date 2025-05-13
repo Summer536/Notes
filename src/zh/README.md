@@ -4,7 +4,7 @@ layout: Blog
 icon: house
 title: 博客主页
 heroImage: /logo.svg
-bgImage: /assets/images/cover1.jpg
+bgImage: /assets/images/cover3.jpg
 heroText: GYQ的技术博客
 heroFullScreen: true
 tagline: 记录学习历程，分享技术心得
@@ -37,7 +37,7 @@ projects:
     desc: 个人简介与联系方式
     link: /about/
 
-footer: 自定义你的页脚文字
+footer: 唯一
 ---
 
 这是一个博客主页的案例。

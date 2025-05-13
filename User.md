@@ -204,6 +204,41 @@ locales: {
 导航栏配置文件: `src/.vuepress/navbar/zh.ts`
 侧边栏配置文件: `src/.vuepress/sidebar/zh.ts`
 
+### 4. 修改Logo和页脚
+
+- **Logo**: 替换 `src/.vuepress/public/logo.svg` 文件
+- **页脚**: 在主页配置中修改 `footer` 属性
+
+### 5. 添加和使用图片
+
+#### 5.1 图片目录结构
+
+图片文件应存放在以下位置：
+- 站点公共图片: `src/.vuepress/public/images/`
+- 文章封面图片: `src/.vuepress/public/assets/images/`
+- 文章内部图片: 可以放在上述任一目录
+
+#### 5.2 在文章中引用图片
+
+在Markdown文件中引用图片的方式：
+
+```markdown
+<!-- 方式1：引用公共images目录下的图片 -->
+![图片描述](/Notes/images/example.jpg)
+
+<!-- 方式2：引用assets/images目录下的图片 -->
+![图片描述](/Notes/assets/images/cover1.jpg)
+
+<!-- 方式3：引用网络图片 -->
+![图片描述](https://example.com/image.jpg)
+```
+
+#### 5.3 添加新图片
+
+1. 将您的图片放入 `src/.vuepress/public/images/` 目录
+2. 在文章中使用相对路径引用，例如 `/Notes/images/your-image.jpg`
+3. 图片文件名建议使用英文和连字符，避免使用空格和特殊字符
+
 ## 六、常见问题
 
 ### 1. 图片引用
