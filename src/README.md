@@ -3,7 +3,8 @@ home: true
 layout: Blog
 icon: house
 title: Blog Home
-heroImage: https://theme-hope-assets.vuejs.press/logo.svg
+# heroImage: https://theme-hope-assets.vuejs.press/logo.svg
+heroImage: /Users/Zhuanz/Desktop/GYQ/HPC/八股+面经/Notes/src/.vuepress/public/YQ_logo.png
 heroText: The name of your blog
 tagline: You can put your slogan here
 heroFullScreen: true
@@ -33,7 +34,8 @@ projects:
     desc: Detailed description of friend
     link: https://link.to.your.friend
 
-  - icon: https://theme-hope-assets.vuejs.press/logo.svg
+  # - icon: https://theme-hope-assets.vuejs.press/logo.svg
+  - icon: /Users/Zhuanz/Desktop/GYQ/HPC/八股+面经/Notes/src/.vuepress/public/YQ_logo.png
     name: custom item
     desc: Detailed description of this custom item
     link: https://link.to.your.friend
