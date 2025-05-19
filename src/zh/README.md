@@ -4,8 +4,8 @@ layout: Blog
 icon: house
 title: 博客主页
 heroImage: /logo.svg
-# bgImage: /assets/images/cover3.jpg
-bgImage: /Users/Zhuanz/Desktop/GYQ/HPC/八股+面经/Notes/src/.vuepress/public/YQ_logo.png
+bgImage: /assets/images/cover3.jpg
+# bgImage: /Users/Zhuanz/Desktop/GYQ/HPC/八股+面经/Notes/src/.vuepress/public/YQ_logo.png
 heroText: GYQ的技术博客
 heroFullScreen: true
 tagline: 记录学习历程，分享技术心得
