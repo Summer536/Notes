@@ -11,7 +11,8 @@ export default hopeTheme({
     url: "https://github.com/your-username",
   },
 
-  logo: "https://theme-hope-assets.vuejs.press/logo.svg",
+  // logo: "https://theme-hope-assets.vuejs.press/logo.svg",
+  logo: "/YQ_logo1.png",
 
   repo: "your-username/your-repo",
 
