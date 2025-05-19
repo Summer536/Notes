@@ -4,7 +4,7 @@ layout: Blog
 icon: house
 title: Blog Home
 # heroImage: https://theme-hope-assets.vuejs.press/logo.svg
-heroImage: /YQ_logo.png
+heroImage: /YQ_logo1.png
 heroText: The name of your blog
 tagline: You can put your slogan here
 heroFullScreen: true
@@ -35,7 +35,7 @@ projects:
     link: https://link.to.your.friend
 
   # - icon: https://theme-hope-assets.vuejs.press/logo.svg
-  - icon: /YQ_logo.png
+  - icon: /YQ_logo1.png
     name: custom item
     desc: Detailed description of this custom item
     link: https://link.to.your.friend
