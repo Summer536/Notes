@@ -41,6 +41,15 @@ Flashattention的创新点：
 <!-- <p align="center">
   <img src="/Figure/FA1.png" width="500" alt="核心思想"/>
 </p> -->
+简单使用示例:
+```python
+# 使用FlashAttention-2的简化示例
+from flash_attn import flash_attn_func
+
+# 假设q, k, v是查询、键、值矩阵
+# [batch_size, seq_len, num_heads, head_dim]
+output = flash_attn_func(q, k, v, causal=True)
+```
 1. 将输入序列分成多个小块
 2. 每次只将一小块数据加载到SRAM中
 3. 在SRAM中计算局部注意力
