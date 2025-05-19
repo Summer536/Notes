@@ -3,7 +3,7 @@ home: true
 layout: Blog
 icon: house
 title: 博客主页
-heroImage: /logo.svg
+heroImage: /YQ_logo1.png
 bgImage: /assets/images/cover3.jpg
 # bgImage: /Users/Zhuanz/Desktop/GYQ/HPC/八股+面经/Notes/src/.vuepress/public/YQ_logo.png
 heroText: GYQ的技术博客
