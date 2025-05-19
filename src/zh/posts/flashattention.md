@@ -37,6 +37,10 @@ Flashattention的创新点：
 
 ### 算法流程
 
+<!-- ![FlashAttention架构图](/Figure/FA1.png "FlashAttention Block Diagram") -->
+<p align="center">
+  <img src="/Figure/FA1.png" width="500" alt="核心思想"/>
+</p>
 1. 将输入序列分成多个小块
 2. 每次只将一小块数据加载到SRAM中
 3. 在SRAM中计算局部注意力
