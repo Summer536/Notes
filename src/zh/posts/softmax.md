@@ -85,7 +85,7 @@ $$
     d_{i} = d_{new} + e^{z_j-c_{new}} = d_{new} + e^{z_j-z_j} = d_{new} + 1
     $$ 
 
-<br><br>
+<!-- <br><br> -->
 该算法在迭代输入数组的元素时保留最大值c 和归一化项 d。在每次迭代中，它都需要将 normalizer d 调整为新的最大 cj，然后才向 normalizer 添加新的值。
 **这里我们把vector中的每个元素的MAC从4降到了3**，在第一次pass里面，我们load一次 $ z_j $ 即可，在第二次pass里面我们load一次 $ z_i $ ,store一次 $ \sigma_{z_i} $,所以一共是3次memory access。
 
