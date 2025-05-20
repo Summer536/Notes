@@ -32,7 +32,7 @@ $$
 - Original softmax的问题所在: 在第三行的算法中，对进行sum的过程中，由于真实硬件的浮点格式所能表示的范围限制(fp16正数所能表示的最大值为65504，而$e^{12}$>65504),很容易造成上溢或者下溢。
 为了解决上述问题，从而引出safe softmax。
 
-    ![Naive softmax](Figure/softmax/naive.png "Naive softmax")
+    ![Naive softmax](Figure/softmax/naive.png)
 
 
 ## Safe softmax
@@ -50,7 +50,7 @@ $$
 - Safe Softmax所带来的问题: 为了安全，我们需要额外求出输入向量中的元素最大值，这带来了多一次的循环pass，并且对于向量中的每一个元素，**它的MAC(memory access count)为4**。具体表现为在第一次pass中Load $ z_i $ 一次, 在第二次pass中Load $ z_j $ 一次，在第三次pass中Load $ z_i $ 一次, Store $ \sigma_{z_i} $ 一次, 所以总共mac是4次。
 为了解决上述问题，从而引出了Online Softmax。
 
-    ![Safe softmax](Figure/softmax/safe.png "Safe softmax")
+    ![Safe softmax](Figure/softmax/safe.png)
 
 
 ## Online softmax
@@ -89,8 +89,11 @@ $$
 该算法在迭代输入数组的元素时保留最大值c 和归一化项 d。在每次迭代中，它都需要将 normalizer d 调整为新的最大 cj，然后才向 normalizer 添加新的值。
 **这里我们把vector中的每个元素的MAC从4降到了3**，在第一次pass里面，我们load一次 $ z_j $ 即可，在第二次pass里面我们load一次 $ z_i $ ,store一次 $ \sigma_{z_i} $,所以一共是3次memory access。
 
-![Online softmax](Figure/softmax/online.png "online softmax")
+![Online softmax](Figure/softmax/online.png)
 
+## 待更新
+- 可以并行化处理的部分是第一个循环pass中，可以对输入向量进行划分，然后可以方便并行化处理，最后对各个划分块的结果进行规约操作，最后依然可以得出正确的结果（Flashattention中用到的）。
+- Softmax + TopK 的fusion效果。
 
 ## 参考文献
 
