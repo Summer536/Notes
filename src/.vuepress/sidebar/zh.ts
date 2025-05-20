@@ -7,7 +7,7 @@ export const zhSidebar = sidebar({
       text: "如何使用",
       icon: "laptop-code",
       prefix: "demo/",
-      link: "demo/",
+      link: "https://github.com/Summer536/Notes",
       children: "structure",
     },
     {

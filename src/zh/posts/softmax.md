@@ -84,7 +84,7 @@ $$
 - Safe Softmax所带来的问题: 为了安全，我们需要额外求出输入向量中的元素最大值，这带来了多一次的循环pass，并且对于向量中的每一个元素，**它的MAC(memory access count)为4**。具体表现为在第一次pass中Load $z_i$ 一次, 在第二次pass中Load $z_j$ 一次，在第三次pass中Load $z_i$ 一次, Store $\sigma_{z_i}$ 一次, 所以总共mac是4次。
 为了解决上述问题，从而引出了Online Softmax。
 
-    ![Safe softmax](Figure/softmax/safe.png)
+    ![](Figure/softmax/safe.png)
 
 ```python
 """
@@ -156,7 +156,7 @@ def safe_softmax(x):
 该算法在迭代输入数组的元素时保留最大值c 和归一化项 d。在每次迭代中，它都需要将 normalizer d 调整为新的最大 cj，然后才向 normalizer 添加新的值。
 **这里我们把vector中的每个元素的MAC从4降到了3**，在第一次pass里面，我们load一次 $z_j$ 即可，在第二次pass里面我们load一次 $z_i$ ,store一次 $\sigma_{z_i}$,所以一共是3次memory access。
 
-![Online softmax](Figure/softmax/online.png)
+![](Figure/softmax/online.png)
 
 ```python
 def online_softmax(x: torch.Tensor) -> torch.tensor:
@@ -184,7 +184,7 @@ def online_softmax(x: torch.Tensor) -> torch.tensor:
 算法 3 的 1-6 行定义了一种通过一次遍历输入向量来顺序计算归一化项的方法，这样的实现虽然减少了内存访问次数，但因为是使用 for 循环串行执行，所以还是不够快。如果能通过并行分块计算归一化项就更好了，但因为的实现依赖前一个归一化项 $d_{j-1}$ ，所以看起来不能分块计算。**除非 $d_{j}$ 可以不直接依赖 $d_{j-1}$ ，而是通过分配好的索引范围来乱序计算**。可以分块计算归一化项的证明过程如下所示：
 
 算法 3 第 5 行（$d_{j} \leftarrow d_{j-1} \times e^{m_{j-1}-m_{j}} + e^{x_{j}-m_{j}}$）的循环展开几个例子:
-![Online softmax parallel](Figure/softmax/parallel.png)
+![](Figure/softmax/parallel.png)
 上述$d_{3}$ 的推导是按照 0->1->2->3 的先后顺序来推导的，但其实由于 exp/log 计算的特性，除了正常从严格按先后顺序推导以外，乱序也是可以得到的，例如 2->1->0->3：
 $$
 \begin{aligned}

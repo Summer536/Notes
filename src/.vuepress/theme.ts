@@ -8,7 +8,7 @@ export default hopeTheme({
 
   author: {
     name: "GYQ",
-    url: "https://github.com/your-username",
+    url: "https://github.com/Summer536",
   },
 
   // logo: "https://theme-hope-assets.vuejs.press/logo.svg",
@@ -20,8 +20,8 @@ export default hopeTheme({
 
   blog: {
     medias: {
-      GitHub: "https://github.com/your-username",
-      Email: "mailto:your-email@example.com",
+      GitHub: "https://github.com/Summer536/Notes",
+      Email: "gaoyuqing536@gmail.com",
       BiliBili: "https://space.bilibili.com/your-id",
       Zhihu: "https://www.zhihu.com/people/your-id",
     },
@@ -64,7 +64,7 @@ export default hopeTheme({
       displayFooter: true,
 
       blog: {
-        description: "一个前端开发者",
+        description: "未来",
         intro: "/zh/intro.html",
       },
 
