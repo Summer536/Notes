@@ -22,74 +22,78 @@ naive softmax -> safe softmax -> online softmax
 
 ## Naive softmax
 
-传统注意力机制的主要瓶颈：
-- 需要存储完整的注意力矩阵，导致内存使用呈二次方增长
-- 大量的内存读写操作导致GPU计算效率低下
+原始softmax的公式为:
+$$
+\sigma(z_i) = \frac{e^{z_i}}{\sum_{j=1}^{n} e^{z_j}}
+$$
 
-Flashattention的创新点：
-- 使用分块计算策略（tiling）
-- 充分利用GPU的SRAM（快速片上内存）
-- 减少对HBM（高带宽内存）的访问
+- 对于向量中的每一个元素，**它的MAC(memory access count)为3**: 第一次pass中load一次，在第二次pass中load一次, store一次, 所以一共是三次memory access。
 
-## 技术原理
+- Original softmax的问题所在: 在第三行的算法中，对进行sum的过程中，由于真实硬件的浮点格式所能表示的范围限制(fp16正数所能表示的最大值为65504，而$e^{12}$>65504),很容易造成上溢或者下溢。
+为了解决上述问题，从而引出safe softmax。
 
-### 算法流程
+    ![Naive softmax](Figure/softmax/naive.png "Naive softmax")
 
-![FlashAttention架构图](Figure/flashattention/FAV1_1.png "FlashAttention Block Diagram")
-<!-- <p align="center">
-  <img src="Figure/FA1.png" width="500" alt="核心思想"/>
-</p> -->
 
-1. 将输入序列分成多个小块
-2. 每次只将一小块数据加载到SRAM中
-3. 在SRAM中计算局部注意力
-4. 根据数学等价性，合并局部结果得到全局注意力
+## Safe softmax
+为解决上述提到的可能的数据溢出问题，基本上所有的深度学习框架使用的都是safe Softmax的计算。其计算公式如下：
+$$
+c = max(z_1,z_2,...,z_n)
+$$
+$$
+\sigma(z_i) = \frac{e^{z_i-c}}{\sum_{j=1}^{n} e^{z_j-c}}
+$$
+- 该计算公式在数学上和naive等价:
+$$
+\sigma(z_i) = \frac{e^{z_i-c}}{\sum_{j=1}^{n} e^{z_j-c}} = \frac{e^{z_i} \cdot e^{-c}}{\sum_{j=1}^{n} e^{z_j} \cdot e^{-c}} =  \frac{e^{z_i}}{\sum_{j=1}^{n} e^{z_j}}
+$$
+- Safe Softmax所带来的问题: 为了安全，我们需要额外求出输入向量中的元素最大值，这带来了多一次的循环pass，并且对于向量中的每一个元素，**它的MAC(memory access count)为4**。具体表现为在第一次pass中Load $ z_i $ 一次, 在第二次pass中Load $ z_j $ 一次，在第三次pass中Load $ z_i $ 一次, Store $ \sigma_{z_i} $ 一次, 所以总共mac是4次。
+为了解决上述问题，从而引出了Online Softmax。
 
-### 性能提升
+    ![Safe softmax](Figure/softmax/safe.png "Safe softmax")
 
-- 计算速度：比传统实现快2-4倍
-- 内存使用：显著降低内存消耗，支持更长序列
-- 训练效率：加速大模型训练过程
 
-## Flashattention-2
+## Online softmax
 
-在原始Flashattention基础上，研究团队进一步提出了Flashattention-2，带来了更多改进：
+在Safe的基础上，Online softmax做出的主要改进为: 将最大值 $c = max(z_1,z_2,...,z_n)$ 和归一因子 $d = \sum_{j=1}^{n} e^{z_j-c}$ 放在同一个循环pass中处理。
 
-- 优化了分块策略
-- 改进了I/O复杂度
-- 对不同GPU架构进行了专门优化
+### 具体实现
 
-## 应用场景
+循环pass处理 $z_1$ -> $z_n$：
+- if $z_i \leqslant c$ : 
+    $$
+    c_{new} = c_{old}
+    $$
+    $$
+    d_{i} = d_{i-1} + e^{z_i-c_{new}}
+    $$
 
-Flashattention已被广泛应用于：
-- 大型语言模型（如GPT系列）
-- 长序列处理模型
-- 视觉Transformer模型
+- if $z_i > c$ :
+    $$
+    c_{new} = z_i
+    $$
+    之前计算的d是相较于旧的c即 $c_{old}$ 的，需要将其转换由新的 $c_{new}$计算:
+    $$
+    d_{old} = \sum_{j=1}^{n} e^{z_j-c_{old}}, \quad d_{new} = \sum_{j=1}^{n} e^{z_j-c_{new}}
+    $$
+    通过以下公式可进行转换:
+    $$
+    d_{new} = d_{old} \cdot \frac{e^{c_{old}}}{e^{c_{new}}}
+    $$
+    因此对于归一化因子d更新时:
+    $$
+    d_{i} = d_{new} + e^{z_j-c_{new}} = d_{new} + e^{z_j-z_j} = d_{new} + 1
+    $$ 
 
-## 实现和使用
+<br><br>
+该算法在迭代输入数组的元素时保留最大值c 和归一化项 d。在每次迭代中，它都需要将 normalizer d 调整为新的最大 cj，然后才向 normalizer 添加新的值。
+**这里我们把vector中的每个元素的MAC从4降到了3**，在第一次pass里面，我们load一次 $ z_j $ 即可，在第二次pass里面我们load一次 $ z_i $ ,store一次 $ \sigma_{z_i} $,所以一共是3次memory access。
 
-主要实现库：
-- xFormers
-- Flash-Attention (GitHub)
-- PyTorch nightly版本已集成
+![Online softmax](Figure/softmax/online.png "online softmax")
 
-简单使用示例:
-```python
-# 使用FlashAttention-2的简化示例
-from flash_attn import flash_attn_func
-
-# 假设q, k, v是查询、键、值矩阵
-# [batch_size, seq_len, num_heads, head_dim]
-output = flash_attn_func(q, k, v, causal=True)
-```
-
-## 未来发展
-
-注意力机制优化仍在快速发展：
-- 支持更长的上下文窗口
-- 降低显存需求
-- 提高吞吐量和推理速度
 
 ## 参考文献
 
 1. [Milakov M, Gimelshein N. Online normalizer calculation for softmax[J]. arXiv preprint arXiv:1805.02867, 2018](https://arxiv.org/pdf/1805.02867)
+
+2. [从 Naive Softmax到Online Softmax and Top-k](https://zhuanlan.zhihu.com/p/1892986988065453222)
