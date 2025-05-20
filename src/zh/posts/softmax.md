@@ -20,7 +20,7 @@ naive softmax -> safe softmax -> online softmax
 
 <!-- more -->
 
-## Naive softmax
+## 一、Naive softmax
 
 原始softmax的公式为:
 $$
@@ -34,8 +34,27 @@ $$
 
     ![Naive softmax](Figure/softmax/naive.png)
 
+```python
+"""
+在 attenion 算子中, softmax 函数的输入 QK^T, 输入矩阵大小就是 [s,s]
+"""
+# [N, N] -> [N, N], 每个元素进行 3 次内存访问：2次读取和一次写入.
+# mac = 3N^2, flops = 3N^2 - N
+def native_softmax(x):
+    s, s = x.shape # 第一个维度是序列长度，第二个维度是隐藏层大小
+    output = np.array(x) # np.array() 将 python 中的数据结构（如列表、元组等）转换为 NumPy 的数组
+    for r in range(s):
+        sum = 0
+        for i in range(s):
+            sum += np.exp(x[r][i]) 
+        for i in range(s):
+            output[r][i] = np.exp(x[r][i]) / sum
+    
+    return output
+```
 
-## Safe softmax
+
+## 二、Safe softmax
 为解决上述提到的可能的数据溢出问题，基本上所有的深度学习框架使用的都是safe Softmax的计算。其计算公式如下：
 $$
 c = max(z_1,z_2,...,z_n)
@@ -52,8 +71,31 @@ $$
 
     ![Safe softmax](Figure/softmax/safe.png)
 
+```python
+"""
+在 attenion 算子中, softmax 函数的输入 QK^T, 输入矩阵大小就是 [s,s]
+"""
+# [N, N] -> [N, N], 每个元素进行 4 次内存访问：3次读取和一次写入.
+# mac = 4N^2, flops = 4N^2 - 2N
+def safe_softmax(x):
+    s, s = x.shape # 第一个维度是序列长度，第二个维度是隐藏层大小
+    output = np.array(x) # np.array() 将 python 中的数据结构（如列表、元组等）转换为 NumPy 的数组
+    for r in range(s):
+        max_r = 0
+        for i in range(s):
+            max_r = max(max_r, x[r][i]) # flops 为 1
+            
+        sum = 0
+        for i in range(s):
+            sum += np.exp(x[r][i] - max_r) # flops 为 2 + 1
+            
+        for i in range(s):
+            output[r][i] = np.exp(x[r][i] - max_r) / sum # flops 为 2
+    
+    return output
+```
 
-## Online softmax
+## 三、Online softmax
 
 在Safe的基础上，Online softmax做出的主要改进为: 将最大值 $c = max(z_1,z_2,...,z_n)$ 和归一因子 $d = \sum_{j=1}^{n} e^{z_j-c}$ 放在同一个循环pass中处理。
 
@@ -83,7 +125,17 @@ $$
     因此对于归一化因子d更新时:
     $$
     d_{i} = d_{new} + e^{z_j-c_{new}} = d_{new} + e^{z_j-z_j} = d_{new} + 1
-    $$ 
+    $$
+
+- 因此最终Online softmax的公式总结为:
+    $$
+    c_{i} = max(c_{i-1}, z_i), \quad d_{i} = d_{i-1}e^{c_{i-1}-c_{i}} + e^{z_i-c_{i}}
+    $$
+
+    $$
+    \sigma(z_i) = \frac{e^{z_i-c_{V}}}{d_{V}}
+    $$
+    这里 $c_{V}$ 和 $d_{V}$ 是全局的最大值和归一化项，可以在一个 for 循环中同时实现，或者说在一个 kernel 中计算完成；
 
 <!-- <br><br> -->
 该算法在迭代输入数组的元素时保留最大值c 和归一化项 d。在每次迭代中，它都需要将 normalizer d 调整为新的最大 cj，然后才向 normalizer 添加新的值。
@@ -91,8 +143,71 @@ $$
 
 ![Online softmax](Figure/softmax/online.png)
 
+```python
+def online_softmax(x: torch.Tensor) -> torch.tensor:
+    """Iterative calculation and 2.5x faster than native softmax """
+    row_cont, col_count = x.shape
+    assert x.ndim == 2, f"only accepts 2D tensor now"
+    output = torch.zeros_like(x)
+    
+    for r in range(row_cont):
+        row_max = x[r][0]
+        normalizer = 0
+        for c in range(1, col_count):
+            pre_max = row_max
+            cur = x[r][c]
+            row_max = max(pre_max, cur)
+            # if cur > pre_max:
+            #     print(f"Update row max now is {row_max}, row = {r}")
+            normalizer = normalizer * torch.exp(pre_max - row_max) + torch.exp(cur - row_max)
+        output[r, :] = torch.exp(x[r, :] - row_max) / normalizer
+    
+    return output
+```
+
+## 四、Online softmax的并行化
+算法 3 的 1-6 行定义了一种通过一次遍历输入向量来顺序计算归一化项的方法，这样的实现虽然减少了内存访问次数，但因为是使用 for 循环串行执行，所以还是不够快。如果能通过并行分块计算归一化项就更好了，但因为的实现依赖前一个归一化项 $d_{j-1}$ ，所以看起来不能分块计算。**除非 $d_{j}$ 可以不直接依赖 $d_{j-1}$ ，而是通过分配好的索引范围来乱序计算**。可以分块计算归一化项的证明过程如下所示：
+
+算法 3 第 5 行（$d_{j} \leftarrow d_{j-1} \times e^{m_{j-1}-m_{j}} + e^{x_{j}-m_{j}}$）的循环展开几个例子:
+![Online softmax parallel](Figure/softmax/parallel.png)
+上述$d_{3}$ 的推导是按照 0->1->2->3 的先后顺序来推导的，但其实由于 exp/log 计算的特性，除了正常从严格按先后顺序推导以外，乱序也是可以得到的，例如 2->1->0->3：
+$$
+\begin{aligned}
+m_{21} &= \max(x_2, x_1) \\
+d_{21} &= e^{x_2 - m_{21}} + e^{x_1 - m_{21}} \\
+m_{210} &= \max(x_0, m_{21}) = \max(x_0, x_2, x_1) \\
+d_{210} &= d_{21} \cdot e^{m_{21} - m_{210}} + e^{x_0 - m_{210}} \\
+&= (e^{x_2 - m_{21}} + e^{x_1 - m_{21}}) \cdot e^{m_{21} - m_{210}} + e^{x_0 - m_{210}} \\
+&= e^{x_2 - m_{210}} + e^{x_1 - m_{210}} + e^{x_0 - m_{210}} \\
+m_3 &= m_{2103} = \max(x_3, m_{210}) = \max(x_3, x_0, x_2, x_1) \\
+d_3 &= d_{210} \cdot e^{m_{210} - m_3} + e^{x_3 - m_3} \\
+&= (e^{x_2 - m_{210}} + e^{x_1 - m_{210}} + e^{x_0 - m_{210}}) \cdot e^{m_{210} - m_3} + e^{x_3 - m_3} \\
+&= e^{x_2 - m_3} + e^{x_1 - m_3} + e^{x_0 - m_3} + e^{x_3 - m_3}
+\end{aligned}
+$$
+
+有了这个基础，我们可以随意定义分块计算: 
+$$
+d_{xy} = d_{x} \cdot e^{m_{x} - m_{xy}} + e^{y - m_{xy}}
+$$
+例如按照乱序计算分块 (2->1)、分块(0->3) ，最后结合两个分块结果：
+$$
+\begin{aligned}
+m_{21} &= \max(x_2, x_1) \\
+d_{21} &= e^{x_2 - m_{21}} + e^{x_1 - m_{21}} \\
+m_{03} &= \max(x_0, x_3) \\
+d_{03} &= e^{x_0 - m_{03}} + e^{x_3 - m_{03}} \\
+m_3 &= m_{2103} = \max(m_{21}, m_{03}) = \max(x_2, x_1, x_0, x_3) \\
+d_3 &= d_{2103} = d_{21} * e^{m_{21} - m_3} + d_{03} * e^{m_{03} - m_3} \\
+&= (e^{x_2 - m_{21}} + e^{x_1 - m_{21}}) * e^{m_{21} - m_3} + (e^{x_0 - m_{03}} + e^{x_3 - m_{03}}) * e^{m_{03} - m_3} \\
+&= e^{x_2 - m_3} + e^{x_1 - m_3} + e^{x_0 - m_3} + e^{x_3 - m_3}
+\end{aligned}
+$$
+
+同样可以得到相同的$d_{3}$ 。这样，我们就可以得到这种方式最大的一个特性：
+**$m$ 和 $d$ 的迭代计算操作同时满足交换律和结合律，任意分块分别计算 $m$ 和 $d$ 之后，将所有子块结果重新聚合在数学上完全等价**，即序列中 max 值带来的影响可以延迟到最后一步再被修正。
+
 ## 待更新
-- 可以并行化处理的部分是第一个循环pass中，可以对输入向量进行划分，然后可以方便并行化处理，最后对各个划分块的结果进行规约操作，最后依然可以得出正确的结果（Flashattention中用到的）。
 - Softmax + TopK 的fusion效果。
 
 ## 参考文献
@@ -100,3 +215,5 @@ $$
 1. [Milakov M, Gimelshein N. Online normalizer calculation for softmax[J]. arXiv preprint arXiv:1805.02867, 2018](https://arxiv.org/pdf/1805.02867)
 
 2. [从 Naive Softmax到Online Softmax and Top-k](https://zhuanlan.zhihu.com/p/1892986988065453222)
+
+3. [Online Softmax解读](https://www.armcvai.cn/2024-10-01/online-softmax-paper.html)
