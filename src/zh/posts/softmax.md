@@ -7,7 +7,7 @@ category:
 tag:
   - GPU优化
   - 算法优化
-cover: /assets/images/cover3.jpg
+# cover: /assets/images/cover3.jpg
 isOriginal: true
 ---
 
