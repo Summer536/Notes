@@ -52,8 +52,23 @@ def native_softmax(x):
     
     return output
 ```
+### Orignal softmax Roofline 分析
+以NVIDIA-V100GPU的RoofModel为例（下图）,从图片右侧的流程图中，Softmax 节点显示：
+OPS（运算次数）：328K，Access（数据访问量）：262K 字节, 其操作强度定义为：
+$$ 
+I = \frac{OPS}{Access} = \frac{328K}{262K} = 1.25 FLOPs/Byte
+$$
+
+Roofline 模型由两部分组成：
+水平线 ：硬件的峰值计算性能（Compute-bound 区域）。
+斜线 ：内存带宽限制（Memory-bound 区域）。
+
+在 Roofline 图中，这样的低 I 值必然落在 内存带宽限制区域 （即斜线部分，图中红色圆圈标注位置）。结果表明 **Softmax 是一个典型的内存受限（Memory-bound）算子 ，其性能主要受限于内存带宽，而非计算能力**。
 
 
+
+| ![](Figure/softmax/roofline.png) | ![](Figure/softmax/roofsoftmax.png) |
+|-----------------------------------|--------------------------------------|
 ## 二、Safe softmax
 为解决上述提到的可能的数据溢出问题，基本上所有的深度学习框架使用的都是safe Softmax的计算。其计算公式如下：
 $$
@@ -69,7 +84,7 @@ $$
 - Safe Softmax所带来的问题: 为了安全，我们需要额外求出输入向量中的元素最大值，这带来了多一次的循环pass，并且对于向量中的每一个元素，**它的MAC(memory access count)为4**。具体表现为在第一次pass中Load $ z_i $ 一次, 在第二次pass中Load $ z_j $ 一次，在第三次pass中Load $ z_i $ 一次, Store $ \sigma_{z_i} $ 一次, 所以总共mac是4次。
 为了解决上述问题，从而引出了Online Softmax。
 
-    ![](Figure/softmax/safe.png)
+    ![Safe softmax](Figure/softmax/safe.png)
 
 ```python
 """
