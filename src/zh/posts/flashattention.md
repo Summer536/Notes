@@ -76,6 +76,16 @@ $m_i$ 和 $d_i$ ，**FlashAttention-v1 基于它的思想更进一步，实现�
 Flashattention总体的算法流程图如下：
 ![](Figure/flashattention/FAV1_5.png)
 
+### 1.4 V1算法的数学证明
+#### 1.4.1 Online Softmax
+这个证明略，详细内容见笔记[Naive -> Safe -> Online Softmax](https://summer536.github.io/Notes/zh/posts/softmax.html)
+
+#### 1.4.2 算法流程
+
+#### 1.4.3 算法实现
+
+
+
 ## 二、Flashattention-V2
 
 ## 三、Flashattention-V3
