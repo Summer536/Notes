@@ -11,7 +11,6 @@ tag:
 ---
 
 # CUDA技术栈知识点
-
 ## CUDA基础
 - CUDA核心知识
   - 必须要会写CUDA，面试的时候手撕一定会存在
@@ -27,6 +26,7 @@ tag:
         - [CUDA SGEMM矩阵乘法优化笔记—从入门到cublas](https://zhuanlan.zhihu.com/p/518857175) 
         - [LeetCUDA](https://github.com/xlite-dev/LeetCUDA/tree/main/kernels/hgemm)
     - [x] softmax
+        - [从naive到safe再到oneline softmax](https://zhuanlan.zhihu.com/p/1892986988065453222)
         - [LeetCUDA](https://github.com/xlite-dev/LeetCUDA/tree/main/kernels/softmax)
     - [x] RMSNorm 
         - [LeetCUDA](https://github.com/xlite-dev/LeetCUDA/tree/main/kernels/rms-norm)
