@@ -1,29 +1,26 @@
 ---
-title: Flashattention
-date: 2025-05-10
-readingTime: 600
+title: Softmax
+date: 2025-05-20
+readingTime: 300
 category:
-  - 机器学习
-  - 深度学习
   - 笔记
 tag:
-  - 注意力机制
   - GPU优化
-  - 大模型
   - 算法优化
 cover: /assets/images/cover3.jpg
 isOriginal: true
 ---
 
-# Flashattention 技术详解
+# Softmax 
 
 ## 简介
 
-Flashattention是一种高效的注意力机制计算方法，由斯坦福大学研究团队在2022年提出。它通过优化GPU内存访问模式，显著提高了Transformer模型中注意力计算的速度并降低了内存使用。作为大模型训练和推理的关键优化技术，Flashattention已被广泛应用于各种大型语言模型中。
+本文将讲解Softmax发展过程：
+naive softmax -> safe softmax -> online softmax
 
 <!-- more -->
 
-## 核心思想
+## Naive softmax
 
 传统注意力机制的主要瓶颈：
 - 需要存储完整的注意力矩阵，导致内存使用呈二次方增长
@@ -95,5 +92,4 @@ output = flash_attn_func(q, k, v, causal=True)
 
 ## 参考文献
 
-1. Dao, T., et al. (2022). FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness.
-2. Dao, T., et al. (2023). FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning. 
+1. [Milakov M, Gimelshein N. Online normalizer calculation for softmax[J]. arXiv preprint arXiv:1805.02867, 2018](https://arxiv.org/pdf/1805.02867)
