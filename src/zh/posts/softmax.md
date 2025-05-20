@@ -207,6 +207,126 @@ $$
 同样可以得到相同的$d_{3}$ 。这样，我们就可以得到这种方式最大的一个特性：
 **$m$ 和 $d$ 的迭代计算操作同时满足交换律和结合律，任意分块分别计算 $m$ 和 $d$ 之后，将所有子块结果重新聚合在数学上完全等价**，即序列中 max 值带来的影响可以延迟到最后一步再被修正。
 
+```python
+# [N, N] -> [N, N], 每个元素进行 3 次内存访问：2 次读取和一次写入. 
+# mac = 3N^2, flops = 8N^2，分块计算，可发挥并行计算优势
+def block_online_softmax(x, block_size=256):
+    assert x.shape[1] % block_size == 0
+    s, s = x.shape
+    output = np.array(x)
+    for r in range(s):
+        m = x[r][0]
+        d = 0
+        
+        # 可使用多线程并行计算，实际 mac 为 N^2
+        for b in range(0, s // block_size):
+            # Calculate m,d of single block
+            m_block = x[r][b*block_size]
+            d_block = 0
+            for j in range(0, block_size):
+                m_block, d_block = online_softmax_update(m_block, d_block, x[r][b*block_size + j], 1)
+            
+            # Merge all block's result to total
+            m, d = online_softmax_update(m, d, m_block, d_block) 
+            
+        for i in range(s):
+            output[r][i] = np.exp(x[r][i] - m) / d
+    
+    return output
+```
+
+## 总结
+Online Softmax算法有两点创新内容：
+- 提出并证明了通过一次遍历输入数据来计算 Softmax 函数归一化项的方法，该方法将 Softmax 函数的内存访问次数减少了 1.33 倍。
+- 证明了可以分块计算归一化常数，这个方法可以发挥 GPU 多线程的特性。
+
+下面代码分别给出 online softmax 算法的 python 代码实现以及 global memory 的访存量 MAC。并进行结果对比测试：
+
+```python
+import numpy as np
+import torch.nn.functional as F
+import torch
+
+def online_softmax_update(m0, d0, m1, d1):
+    #                             x   1
+    m = max(m0, m1) # flops: 1
+    d = d0 * np.exp(m0 - m) + d1 * np.exp(m1-m) # flops: 5
+    return m, d
+
+# [N, N] -> [N, N], 每个元素进行 3 次内存访问：2 次读取和一次写入.
+# mac = 3N^2, flops = 8N^2 
+def online_softmax(x):
+    s, s = x.shape
+    output = np.array(x)
+    for r in range(s):
+        m = x[r][0]
+        d = 1
+        for j in range(1, s):
+            m, d = online_softmax_update(m, d, x[r][j], 1) # flops 为 6
+        for i in range(s):
+            output[r][i] = np.exp(x[r][i] - m) / d # flops 为 2
+            
+    return output
+
+# [N, N] -> [N, N], 每个元素进行 3 次内存访问：2 次读取和一次写入. 
+# mac = 3N^2, flops = 8N^2，分块计算，可发挥并行计算优势
+def block_online_softmax(x, block_size=256):
+    assert x.shape[1] % block_size == 0
+    s, s = x.shape
+    output = np.array(x)
+    for r in range(s):
+        m = x[r][0]
+        d = 0
+        
+        # 可使用多线程并行计算，实际 mac 为 N^2
+        for b in range(0, s // block_size):
+            # Calculate m,d of single block
+            m_block = x[r][b*block_size]
+            d_block = 0
+            for j in range(0, block_size):
+                m_block, d_block = online_softmax_update(m_block, d_block, x[r][b*block_size + j], 1)
+            
+            # Merge all block's result to total
+            m, d = online_softmax_update(m, d, m_block, d_block) 
+            
+        for i in range(s):
+            output[r][i] = np.exp(x[r][i] - m) / d
+    
+    return output
+     
+if __name__ == "__main__":
+    x = np.random.randn(1024, 1024)
+    # 对每一行执行 softmax 操作
+    pytorch_softmax_out = F.softmax(torch.tensor(x), dim=1) # dim=0表示按列计算；dim=1表示按行计算。
+    native_softmax_out = native_softmax(x)
+    safe_softmax_out = safe_softmax(x)
+    online_softmax_out = online_softmax(x)
+    block_online_softmax_out = block_online_softmax(x, 256)
+    
+    if torch.allclose(pytorch_softmax_out, torch.tensor(native_softmax_out), atol=1e-4):
+        print("naive softmax 与 PyTorch softmax 结果一致!")
+    else:
+        print("naive softmax safe_softmax 与 PyTorch softmax 结果不一致!")
+    
+    if torch.allclose(pytorch_softmax_out, torch.tensor(safe_softmax_out), atol=1e-4):
+        print("safe softmax 与 PyTorch softmax 结果一致!")
+    else:
+        print("safe softmax 与 PyTorch softmax 结果不一致!")
+    
+    if torch.allclose(pytorch_softmax_out, torch.tensor(online_softmax_out), atol=1e-4):
+        print("online softmax 与 PyTorch softmax 结果一致!")
+    else:
+        print("online softmax 与 PyTorch softmax 结果不一致!")
+
+    if torch.allclose(pytorch_softmax_out, torch.tensor(block_online_softmax_out), atol=1e-4):
+        print("block online softmax 与 PyTorch softmax 结果一致!")
+    else:
+        print("block online softmax 与 PyTorch softmax 结果不一致!")
+```
+
+运行结果显示结果全部一致。
+
+
 ## 待更新
 - Softmax + TopK 的fusion效果。
 
