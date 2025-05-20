@@ -69,7 +69,7 @@ $$
 - Safe Softmax所带来的问题: 为了安全，我们需要额外求出输入向量中的元素最大值，这带来了多一次的循环pass，并且对于向量中的每一个元素，**它的MAC(memory access count)为4**。具体表现为在第一次pass中Load $ z_i $ 一次, 在第二次pass中Load $ z_j $ 一次，在第三次pass中Load $ z_i $ 一次, Store $ \sigma_{z_i} $ 一次, 所以总共mac是4次。
 为了解决上述问题，从而引出了Online Softmax。
 
-    ![Safe softmax](Figure/softmax/safe.png)
+    ![](Figure/softmax/safe.png)
 
 ```python
 """

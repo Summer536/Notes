@@ -11,11 +11,11 @@ tag:
   - GPU优化
   - 大模型
   - 算法优化
-cover: /assets/images/cover3.jpg
+# cover: /assets/images/cover3.jpg
 isOriginal: true
 ---
 
-# Flashattention 技术详解
+# Flashattention-V1
 
 ## 简介
 
@@ -38,7 +38,7 @@ Flashattention的创新点：
 
 ### 算法流程
 
-![FlashAttention架构图](Figure/flashattention/FAV1_1.png "FlashAttention Block Diagram")
+![](Figure/flashattention/FAV1_1.png "FlashAttention Block Diagram")
 <!-- <p align="center">
   <img src="Figure/FA1.png" width="500" alt="核心思想"/>
 </p> -->
