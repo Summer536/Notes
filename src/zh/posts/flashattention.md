@@ -90,7 +90,7 @@ Flashattention总体的算法流程图如下：
 ---
 4. 根据前面的计算，结果矩阵$O$需要切分成$𝐵𝑟×𝑑$的块来存放中间结果。长度为$N$的$l$和$m$也要切分成$𝐵𝑟$个元素的块，用于存放这些行当前的指数累加值和当前最大值。
 ![](Figure/flashattention/step4.png)
-![](Figure/flashattention/tiling1.png)
+![](Figure/flashattention/Tiling1.png)
 ![](Figure/flashattention/tiling2.png)
 ---
 算法图
