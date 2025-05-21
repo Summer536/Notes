@@ -32,7 +32,7 @@ $$
 - Original softmax的问题所在: 在第三行的算法中，对进行sum的过程中，由于真实硬件的浮点格式所能表示的范围限制(fp16正数所能表示的最大值为65504，而$e^{12}$>65504),很容易造成上溢或者下溢。
 为了解决上述问题，从而引出safe softmax。
 
-    ![Naive softmax](Figure/softmax/naive.png)
+    ![](Figure/softmax/naive.png)
 
 ```python
 """
