@@ -344,18 +344,226 @@ $$
 
 所以有 $O(NdT_c) = O(N^2d^2M^{-1})$，证毕。
 
+### 1.5 代码实现
+FlashAttention-1 的分块计算 python 代码如下。其余部分代码和并行代码还没有写，后续更新[可参考](https://www.armcvai.cn/2024-10-07/flashattention1-2-3-summary.html)
+```python
+def block_flashattn(Q, K, V, block_size=32):
+    N, Dim = Q.shape
+    
+    # 1, Load Q K and write S. and Compute S[r][i] by matrix multiply 
+    S = np.zeros([N, N], "float32")
+    O = np.zeros([N, Dim], "float32")
+        
+    for r in range(0, N):
+       for i in range(0, N):
+           # QK^T
+           for j in range(0, Dim):
+               S[r][i] += Q[r][j] * K[i][j]
+    
+    for r in range(0, N):  
+        # Softmax
+        mm = np.zeros([N],  "float32")
+        dd = np.zeros([N],  "float32")
+        m = np.zeros([N // block_size],  "float32")
+        d = np.zeros([N // block_size],  "float32")
+        
+        for b in range(0, N // block_size):
+            # Calculate m,d of single block
+            for i in range(0, block_size):
+                mm[b*block_size + i], dd[b*block_size + i] = online_softmax_update(
+                    mm[b*block_size + i-1] if i > 0 else MIN_M,
+                    dd[b*block_size + i-1] if j > 0 else 0,
+                    S[r, b*block_size + i], 
+                    1,
+                )
+            
+            # Merge all block's result to total
+            m[b], d[b] = online_softmax_update(
+                m[b-1] if b > 0 else MIN_M,
+                d[b-1] if b > 0 else 0,
+                mm[(b + 1) * block_size - 1], # 当前块的 mm 和  dd
+                dd[(b + 1) * block_size - 1])
+        
+        # PV: [N, N] * [N, Dim] -> [N, dim]
+        for c in range(0, Dim):
+            o = 0
+            for b in range(0, N //block_size):
+                # Calculate single block
+                oo = 0
+                for i in range(0, block_size):
+                    oo = flashattn_update(
+                        mm[b * block_size + i], # 当前迭代位置的 m
+                        dd[b * block_size + i], # 当前迭代位置的 d
+                        mm[b * block_size + i-1] if i > 0 else MIN_M,
+                        dd[b * block_size + i-1] if i > 0 else 0,
+                        oo,
+                        S[r, b * block_size + i], # 当前迭代位置的 s[r,i]
+                        V[b * block_size + i, c],
+                        1
+                    )
+                
+                # Merge all blocks to total
+                o = flashattn_update(
+                    m[b],
+                    d[b],
+                    m[b - 1] if b > 0 else MIN_M,
+                    d[b - 1] if b > 0 else 0,
+                    o,
+                    mm[(b + 1) * block_size - 1],
+                    dd[(b + 1) * block_size - 1],
+                    oo,
+                )
+            O[r][c] = o
+            
+    return O
+```
+
+### 1.6 总结
+总的来说，FlashAttention 在**算法层面通过重排注意力计算，并利用经典技术（分块和重计算）显著加速了注意力计算，将内存占用从二次方降低到线性**。使得在 sequence length 偏长和 attention 计算处于内存密集型的情况下有着明显的加速效果。并直接带来了相对于优化基准 2-4 倍的实际运行时间加速，以及高达 10-20 倍的内存节省，并且计算结果是精确而非近似的。
+
+核心思想总结：flash attention 本质上是通过分块方法和 online_softmax 思想的减少内存读写次数/内存带宽时间，具体讲就是减少了 hbm -> sram 的内存搬运数据量，也就提高了 self-attention 操作强度。
+
+V1版本还有一些可优化的地方：
+- Q的循环可以放在外面，消除每次KV外循环都要去访问Q的开销；
+- 每次外循环都需要去用presum/cursum去rescale中间结果以得到最终结果，这些计算可以通过算法消除，使得尽可能减少CUDA core的计算，增加tensor core的计算，因为tensorcore的FLOPS比cuda core大得多，然而在多数真实情况下，tensor core和cuda core很难overlap，或者overlap的比率很低，所以减少cuda core的计算以提升性能
+
 ## 二、Flashattention-V2
 
+### 2.1 FAV2整体介绍
+#### 挑战
+FlashAttention-V1 远达不到优化矩阵乘法（GEMM）操作的速度，仅达到理论最大 FLOPs/s 的 25-40%。作者观察到，这种**低效是由于 GPU 上不同线程块和 warp 之间的工作分配不理想，导致了 SM 低占用率或不必要的共享内存读写**。
+#### 整体思想
+FlashAttention-2是对FlashAttention-1的改进，在1的基础上性能可以再提升2倍，达到50%-73%的A100 peak perf。
+1. 减少了非矩阵乘法运算（non-matmul）的计算量FLOPs。
+
+2. 在batchsize和numheads非常小的情况下（小于SM个数，此时会有SM空闲），对seqlen维度充分并行，从而充分利用GPU SM资源。
+
+3. 如何在一个thread block内部分配任务给不同的warps，以减少访问共享内存次数和warp的通信开销。
+下面对应这三点详细讲解其算法内容。
+
+### 2.2 FAV2算法详解
+总体算法流程如下图:
+![](Figure/flashattention/FAV2_2.png)
+- 对调了v1版本的内外循环
+- （前向传播）在内循环中删除了矩阵$O$计算softmax的分母rescale步骤，仅在内循环结束后执行一次最终的rescale
+- （后向传播）不保存每一块的最大值 $m^{(j)}$ 和指数和 $\ell^{(j)}$ 用于反向传播。只存储 log sumexp，即 $L(j) = m^{(j)} + \log(\ell^{(j)})$。
+
+#### 2.2.1 减少非矩阵乘运算
+现代GPU有针对matmul（GEMM）专用的Tensor Cores，算力很高。以A100为例，其FP16/BF16 tensorcore的理论峰值吞吐量为312 TFLOPS，但FP32非矩阵乘法在CUDA core上仅有19.5 TFLOPS，可以理解为每个non-matmul FLOP比mat-mul FLOP昂贵16倍。虽然在不涉及到访存的情况下，tensorcore和CUDA core是有可能同时并行工作，但是在真实场景中，受内存带宽限制，很难并行重叠。所以为了达到高吞吐量（尽可能让tensorcore来计算），希望尽可能将时间花在matmul的计算上。
+
+为了减少non-matmul计算量，2在1基础上做了如下算法上的改进：
+
+**交换循环顺序，Q的行为外循环，KV的列为内循环，一次性出一个结果块O(i)，使得内循环结束后只做一次rescaling就可以得到O的最终结果**，从而减少非matmul的计算；
+
+（作为对比： **V1的KV的列为外循环,Q的行为内循环,一次出全部的结果O(i),但是需要通过外循环来不断更新这个O(i), 直到外循环结束更新为正确的O(i)**）
+
+具体为：
+
+1. 在计算局部 attention 时，先不考虑 softmax 的分母 $\sum e^{x_i}$，即
+
+   $$
+   \ell^{(i+1)} = e^{m^{(i)} - m^{(i+1)}} \ell^{(i)} + \text{rowsum}\left(e^{\mathbf{S}^{(i+1)} - m^{(i+1)}}\right),
+   $$
+
+   在计算 $\mathbf{O}^{(1)}$ 时省略 $\text{diag}\left(\ell^{(1)}\right)^{-1}$：
+
+   - FlashAttention-1: $\mathbf{O}^{(1)} = \bar{\mathbf{P}}^{(1)} \mathbf{V}^{(1)} = \text{diag}\left(\ell^{(1)}\right)^{-1} e^{\mathbf{S}^{(1)} - m^{(1)}} \mathbf{V}^{(1)}$
+   - FlashAttention-2: $\mathbf{O}^{(1)} = e^{\mathbf{S}^{(1)} - m^{(1)}} \mathbf{V}^{(1)}$
+
+2. 由于省略了 $\text{diag}\left(\ell^{(i)}\right)^{-1}$，更新 $\mathbf{O}^{(i+1)}$ 时不再需要 rescale $\ell^{(i)} / \ell^{(i+1)}$，但是 softmax 的分子部分还是要更新，其实就是更新中间 max，即：
+
+   - FlashAttention-1: $\mathbf{O}^{(2)} = \text{diag}\left(\ell^{(1)} / \ell^{(2)}\right)^{-1} \mathbf{O}^{(1)} + \text{diag}\left(\ell^{(2)}\right)^{-1} e^{\mathbf{S}^{(2)} - m^{(2)}} \mathbf{V}^{(2)}$
+   - FlashAttention-2:
+     $$
+     \tilde{\mathbf{O}}^{(2)} = \text{diag}\left(e^{m^{(1)} - m^{(2)}}\right) \tilde{\mathbf{O}}^{(1)} + e^{\mathbf{S}^{(2)} - m^{(2)}} \mathbf{V}^{(2)} = e^{s^{(1)} - m} \mathbf{V}^{(1)} + e^{s^{(2)} - m} \mathbf{V}^{(2)}
+     $$
+
+3. 由于更新 $\mathbf{O}^{(i+1)}$ 未进行 rescale，最后一步时需要将 $\tilde{\mathbf{O}}^{(\text{last})}$ 乘上 softmax 的真实分母 $\text{diag}\left(\ell^{(\text{last})}\right)^{-1}$ 来得到正确的输出，对应：
+
+   - FlashAttention-2: $\mathbf{O} = \text{diag}\left(\ell^{(2)}\right)^{-1} \tilde{\mathbf{O}}^{(2)}$
+
+这也带来的代价就是，每次内循环都需要从HBM读KV，但更多的**好处是不同q的计算是独立的，没有额外的同步和rescale成本**，因为每个外循环就会算出一个完整的O结果，如果按k来拆，因为softmax需要归一化，就需要1中的各种rescale，以及做gemm时warp的同步和reduce，这会在第三点讲到。
+
+#### 2.2.2 对seqlen维度充分并行
+这一点主要考虑到batchsize*numheads小于SM个数的情况下，无法打满SM算力，此时seqlen一般都很大，需要对seqlen维度充分并行。**主要的实现就是在于FlashAttention-2将Q移到了外循环，KV移到了内循环，由于改进了算法使得warps之间不再需要相互通信去处理Q，所以外循环可以放在不同的block上。** 
+
+**前向传播** 我们将它们调度到不同的线程块上，这些线程块之间不需要通信。我们还像 FlashAttention 中那样在批量维度和头的数量维度上并行化。序列长度上的并行化提高了占用率（GPU 资源的使用率），当批量大小和头的数量较小时，这种并行化带来了加速。
+![](Figure/flashattention/FAV2_4.png)
+
+
+#### 2.2.3 更好的warps任务划分
+![](Figure/flashattention/FAV2_3.png)
+如上图，FlashAttention-2 将 $Q$ 移到了外循环 $i$，$K, V$ 移到了内循环 $j$，并将 $Q$ 分为 4 个 warp，所有 warp 都可以访问 $K$ 和 $V$。这样做的好处是：  
+1. **原来 FlashAttention 每次 KV 内循环 $i++$ 会导致 $O_i$ 也变换（而 $O_i$ 需要通过 HBM 读写），现在每次内循环 $j++$ 处理的都是 $O_i$，此时 $O_i$ 是存储在 SRAM 上的。** 
+2. **而且各个 warp 不用再像 1 在 shared memory 上做 reduce。** 
+3. **至于 KV 的 load&store 次数也变多了，但是 $Q$ 和 $O$ 的 load&store 次数表少了，在访存量方面应该打个平手。**
+
+**前向传播**。在每个块中，FlashAttention 将 K 和 V 分配给 4 个 warps，同时保持 Q 对所有 warps 都可访问。每个 warp 计算 $QK^T$ 的一部分，随后需要与 V 的一部分相乘，并通过通信汇总结果。这种方案被称为“split-K”方案。然而，这种方式效率不高，因为所有 warp 都需要将中间结果写入共享内存，进行同步后再汇总，这些共享内存的读写操作拖慢了前向传播的速度。
+
+FlashAttention-2 优化这一点，改为将 Q 分配给 4 个 warp，同时保持 K 和 V 对所有 warps 可访问。每个 warp 在计算 $QK^T$ 的一部分后，直接与 V 的共享部分相乘，得到最终输出。这样无需 warps 之间的通信，大大减少了共享内存的读写操作，从而提升了速度（见第 4 节）。
+
+**反向传播**。将 warps 分区以避免“split-K”方案。不过，由于 $Q, K, V, O, dO, dQ, dK, dV$ 等输入和梯度之间的复杂依赖关系，仍然需要一定的同步操作。尽管如此，避免“split-K”方案可以减少共享内存的读写操作，从而带来加速效果。
+
+**调整块大小**。增大块大小通常可以减少共享内存的加载和存储操作，但也会增加所需寄存器的数量以及共享内存的总使用量。一旦块大小超过一定阈值，寄存器溢出会导致显著的性能下降，或者所需的共享内存量超过 GPU 的可用空间，导致内核无法执行。通常我们根据头维度 $d$ 和设备的共享内存大小，选择 $\{64, 128\} \times \{64, 128\}$ 大小的块。
+
+我们针对每个头维度手动调优块大小，因为基本上只有 4 种块大小可供选择。但这个过程可以通过自动调优来避免手动调节的麻烦，作者未来将对块大小自动调优进行探索。
+
+
+### 2.3 代码实现
+待更新
+
+### 2.4 总结
+待更新
+
 ## 三、Flashattention-V3
+### 3.1 整体介绍
+#### 挑战
+FlashAttention-2 的缺陷是对训练提速较多，对推理加速不大：主要是因为推理阶段查询的长度通常是 1，这意味着如果批量大小小于 GPU 上流处理器（SM）的数量（A100 GPU 上有 108 个 SM），那么 atttention 操作只能使用一小部分 GPU！尤其是在使用较长的上下文时，由于需要更小的批量大小以适应 GPU 内存，批量大小为 1 的情况下，FlashAttention 的 GPU 利用率不到 1%。
+
+#### 整体思想
+FlashAttention-3 提出了**Flash-Decoding**，在前作对 batch size 和 query length 并行的基础上增加了一个新的并行化维度：keys/values 的序列长度，代价是最后一个小的归约步骤。主要解决了 FlashAttention-2 在推理阶段 GPU 利用率低的问题。
+
+### 3.2 Flash-Decoding
+FlashAttention1-2 的注意力计算的并行过程可视化如下图所示：
+![](Figure/flashattention/parallelization0.gif)
+可以看出，FlashAttention **只在查询块($Q$)和批次大小维度上(bs)进行并行处理**，因此在解码过程中无法充分利用 GPU 的全部计算资源。(推理阶段几乎全部都是$Q=1$，上述两个并行的前者失效)
+
+Flash-Decoding 基于 FlashAttention，并**增加了一个新的并行化维度：键/值的序列长度($K,V$)**。它结合了上述两种方法的优点。与 FlashAttention 一样，它将非常少量的额外数据存储在全局内存中，但只要上下文长度足够长，即使批次大小很小，也能充分利用 GPU。
+
+Flash-Decoding 在前作对 batch size 和 query length 并行的基础上增加了一个新的并行化维度：keys/values 的序列长度，**代价是最后一个小的归约步骤**。
+
+![](Figure/flashattention/parallelization_kv.gif)
+
+Flash-Decoding 的工作流程分为三个步骤：
+
+1. 首先，将键/值拆分成更小的块。
+2. 然后，使用 FlashAttention 并行计算查询与每个拆分块的注意力值，同时为每行和每个块记录一个额外的标量：注意力值的 log-sum-exp。
+3. 最后，通过对所有拆分块进行归约，结合 log-sum-exp 调整各个块的贡献，计算出最终的结果。
+上述步骤之所以可行，是因为注意力/softmax 可以迭代计算（前作的贡献）。在 Flash-Decoding 中，它在两个层次上使用：在拆分内（类似于 FlashAttention）和跨拆分来执行最终归约。
+
+步骤（1）不涉及任何GPU operation，因为KV chunk是full KV的view作者实现了两个单独的kernel分别执行step（2）和（3）。**虽然这里多了一个kernel launch，但是从结果来看，开销远小于对seqlen维度的parallelism获得的收益**
+
+### 3.3 V3针对Hopper架构的优化
+待更新
+
+### 3.4 代码实现
+待更新
+### 3.5 总结
+待更新
 
 ## 总结
 
 ## 待更新
+- FlashAttention高性能地支持多样的attention mask！（之前仅支持下三角矩阵等常见的mask类型）[参考文章](https://mp.weixin.qq.com/s?__biz=Mzg2ODk4MzE2MQ==&mid=2247484548&idx=1&sn=0f30f3c124c923d250b4df5eb3bf82e8&chksm=cf2114177acc7c099886614c923c75f0fbedab04ed4f5c7813b3ff52a5b74004325e7af55e0b&scene=126&sessionid=1747114199#rd)
 
-## 参考文献
+- 3.3优化 [参考文章](https://www.bilibili.com/video/BV19koLYUEe8?spm_id_from=333.788.videopod.sections&vd_source=f058beebb64c488b55915da416ee6086)
+
+- V1V2V3的代码实现
+## 参考资料
 
 1. [Dao, T., et al. (2022). FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness.](https://proceedings.neurips.cc/paper_files/paper/2022/file/67d57c32e20fd0a7a302cb81d36e40d5-Paper-Conference.pdf)
 2. [Dao, T., et al. (2023). FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning. ](https://arxiv.org/pdf/2307.08691)
+3. [Shah J, et al.  (2024). Flashattention-3: Fast and accurate attention with asynchrony and low-precision](https://arxiv.org/pdf/2407.08608)
 3. [Flash Attention V1论文解读-李理](https://fancyerii.github.io/2023/10/23/flashattention/)
 4. [Flash Attention V1论文解读-Zhang](https://www.armcvai.cn/2024-10-02/flashattention1-paper.html)
 5. [Flash Attention V2论文解读-Zhang](https://www.armcvai.cn/2024-10-05/flashattention2-paper.html)
@@ -363,3 +571,5 @@ $$
 7. [flashattention1-2-3 系列总结-Zhang](https://www.armcvai.cn/2024-10-07/flashattention1-2-3-summary.html)
 8. [Flash Attention1-真正意义上的scale dot product attention的算子融合-AI不止算法](https://mp.weixin.qq.com/s?__biz=Mzg2ODk4MzE2MQ==&mid=2247483875&idx=1&sn=a23ef737b03e5bdec1892a8818de0704&chksm=cea549f5f9d2c0e3832f10031de98dd4a243fd2411ffdacb434cc64a473452a148fc149ded47&scene=21#wechat_redirect)
 9. [FlashAttentionV1V2算法解释-AI不止算法Bilibili](https://www.bilibili.com/video/BV1gzBqY4Evw?spm_id_from=333.788.videopod.sections&vd_source=f058beebb64c488b55915da416ee6086)
+10. [Flash Attention2-对1在GPU并行性和计算量上的一些小优化-AI不止算法](https://mp.weixin.qq.com/s?__biz=Mzg2ODk4MzE2MQ==&mid=2247483887&idx=1&sn=c97b4a392ee4aa13fbc3e454ce74970f&chksm=cea549f9f9d2c0efe263f352119262120cad861a29aa4cf1bc61ac3a2bb178b9a5e0783f4989&scene=21#wechat_redirect)
+12. [FlashAttention for inference出来了，专治小batchsize大上下文长度的实时生成式推理](https://mp.weixin.qq.com/s?__biz=Mzg2ODk4MzE2MQ==&mid=2247484042&idx=1&sn=1a5b129d559f01e2994149a0283a23a0&chksm=cea54a9cf9d2c38aae5fe39515473eb264edc30a264f70bf44eeb9ffa32f3d5760283ba4cd1a&scene=21#wechat_redirect)

@@ -345,7 +345,7 @@ if __name__ == "__main__":
 ## 待更新
 - Softmax + TopK 的fusion效果。
 
-## 参考文献
+## 参考资料
 
 1. [Milakov M, Gimelshein N. Online normalizer calculation for softmax[J]. arXiv preprint arXiv:1805.02867, 2018](https://arxiv.org/pdf/1805.02867)
 
