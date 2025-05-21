@@ -25,13 +25,13 @@ tag:
         - [CUDA乘终极优化指南](https://zhuanlan.zhihu.com/p/410278370)
         - [CUDA SGEMM矩阵乘法优化笔记—从入门到cublas](https://zhuanlan.zhihu.com/p/518857175) 
         - [LeetCUDA](https://github.com/xlite-dev/LeetCUDA/tree/main/kernels/hgemm)
-    - [x] softmax
+    - [ ] softmax
         - [从naive到safe再到oneline softmax](https://zhuanlan.zhihu.com/p/1892986988065453222)
         - [LeetCUDA](https://github.com/xlite-dev/LeetCUDA/tree/main/kernels/softmax)
-    - [x] RMSNorm 
+    - [ ] RMSNorm 
         - [LeetCUDA](https://github.com/xlite-dev/LeetCUDA/tree/main/kernels/rms-norm)
-    - [x] layernorm
-    - [x] transpose
+    - [ ] layernorm
+    - [ ] transpose
   - **前两个算子**要熟练掌握
 
 - 面试经典问题

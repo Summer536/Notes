@@ -544,6 +544,8 @@ Flash-Decoding 的工作流程分为三个步骤：
 步骤（1）不涉及任何GPU operation，因为KV chunk是full KV的view作者实现了两个单独的kernel分别执行step（2）和（3）。**虽然这里多了一个kernel launch，但是从结果来看，开销远小于对seqlen维度的parallelism获得的收益**
 
 ### 3.3 V3针对Hopper架构的优化
+TMA（张量内存访存单元）
+
 待更新
 
 ### 3.4 代码实现

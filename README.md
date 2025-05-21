@@ -26,6 +26,7 @@
 5. **等待部署**：
    - GitHub Pages会自动部署更新（通常需要几分钟时间）
    - 如果网页没有更新，可能是浏览器缓存问题，尝试强制刷新（Ctrl+F5或Cmd+Shift+R）
+   - 如果还是不行，可以手动访问 https://github.com/Summer536/Notes 查看Gaoyuqing536右侧的网页更新情况（一般是md转html出现了一些问题）
 
 ## 常见问题
 
