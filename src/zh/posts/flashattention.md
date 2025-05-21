@@ -552,6 +552,10 @@ Flash-Decoding 的工作流程分为三个步骤：
 待更新
 
 ## 总结
+-  **V1版本使用分块计算完成了attention算子的访存性能提升**
+-  **V2版本在V1的基础上，通过交换内外循环，减少了非矩阵乘运算的计算量，并行化处理了seqlen维度，并减少了warps之间的通信开销**
+-  **V3版本在V2的基础上，通过增加一个并行化维度($K,V$维度)，解决了V2在推理阶段GPU利用率低的问题**
+
 
 ## 待更新
 - FlashAttention高性能地支持多样的attention mask！（之前仅支持下三角矩阵等常见的mask类型）[参考文章](https://mp.weixin.qq.com/s?__biz=Mzg2ODk4MzE2MQ==&mid=2247484548&idx=1&sn=0f30f3c124c923d250b4df5eb3bf82e8&chksm=cf2114177acc7c099886614c923c75f0fbedab04ed4f5c7813b3ff52a5b74004325e7af55e0b&scene=126&sessionid=1747114199#rd)
