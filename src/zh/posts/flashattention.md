@@ -342,7 +342,7 @@ $$
 T_c = \frac{N}{B_c} = O\left(\frac{Nd}{M}\right)
 $$
 
-所以有 $O(NdT_c) = O(N^2d^2M^{-1})$。证毕。
+所以有 $O(NdT_c) = O(N^2d^2M^{-1})$，证毕。
 
 ## 二、Flashattention-V2
 
