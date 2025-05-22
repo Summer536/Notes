@@ -12,6 +12,7 @@ category:
 
 ## 笔记列表
 
+- [关于大模型推理的思考](https://summer536.github.io/Notes/zh/posts/Inference.html) - 大模型推理服务的一些常见问题
 - [PagedAttention](https://summer536.github.io/Notes/zh/posts/pagedattention.html) - 分页注意力机制计算方法的详细解析
 - [Naive -> Safe -> Online Softmax](https://summer536.github.io/Notes/zh/posts/softmax.html) - Softmax的发展
 - [Flashattention技术详解](https://summer536.github.io/Notes/zh/posts/flashattention.html) - 高效注意力机制计算方法的详细解析
