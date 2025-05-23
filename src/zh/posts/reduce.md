@@ -20,18 +20,17 @@ isOriginal: true
 
 
 ## 什么是reduce？
-        reduce中文为"缩减"或"规约"，在CUDA中，Reduce是指将多个线程的计算结果通过某种操作（求和、求最大值等）合并为一个值的通用并行模式。常见的实现方式有树形规约、交叉规约等。
+reduce中文为"缩减"或"规约"，在CUDA中，Reduce是指将多个线程的计算结果通过某种操作（求和、求最小值等）合并为一个值的通用并行模式。常见的实现方式有树形规约、交叉规约等。
  - 树形规约（Tree-based Reduction）
+    ![树形规约](Figure/reduce/tree.jpg)
 
-   ![树形规约](Figure/reduce/tree.jpg)
-
-        Tree-based Reduction使用共享内存，在一个block内按类似二叉树的方式合并相邻线程的数据，并逐层缩减，直到最终只由一个线程得到总结果。它的优点是通用性强，适用于任意线程数；缺点是需要同步（__syncthreads）和共享内存，稍慢一些。
+Tree-based Reduction使用共享内存，在一个block内按类似二叉树的方式合并相邻线程的数据，并逐层缩减，直到最终只由一个线程得到总结果。它的优点是通用性强，适用于任意线程数；缺点是需要同步（__syncthreads）和共享内存，稍慢一些。
 
  - 交叉规约（Warp-shuffle Reduction）
 
-        利用CUDA的__shfl_down_sync等指令在warp 内直接进行线程间通信，不依赖共享内存，速度更快。缺点是仅适用于warp内（通常是32线程）规约。
+利用CUDA的__shfl_down_sync等指令在warp 内直接进行线程间通信，不依赖共享内存，速度更快。缺点是仅适用于warp内（通常是32线程）规约。
 
-    > 💡 **Note**: warp_shuffle 是 warp 内线程之间，通过硬件指令，直接访问彼此寄存器内容的一种高效通信方式，不需要共享内存或全局内存，用于提升 warp 内规约、转置、广播等操作性能。
+> 💡 **Note**: warp_shuffle 是 warp 内线程之间，通过硬件指令，直接访问彼此寄存器内容的一种高效通信方式，不需要共享内存或全局内存，用于提升 warp 内规约、转置、广播等操作性能。
 
  - Blockreduce
 
