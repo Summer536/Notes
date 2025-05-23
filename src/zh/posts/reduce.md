@@ -34,7 +34,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
 
  - Blockreduce
 
-        将上述两种方法合并在一个block内，将所有线程合并为一个输出值，由thread 0 输出结果。
+        将上述两种方法合并在一个block内，将所有线程合并为一个输出值，由thread0输出结果。
 
 ## naive Reduce(朴素实现)
  - 确定参数
