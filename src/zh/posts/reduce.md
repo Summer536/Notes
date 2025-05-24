@@ -36,7 +36,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
 
         将上述两种方法合并在一个block内，将所有线程合并为一个输出值，由thread0输出结果。
 
-## naive Reduce(朴素实现)
+## V1. naive Reduce(朴素实现)
  - 确定参数
 
         BlockNum：即开启的block数量，代表需要将数组切分为几份。
@@ -80,9 +80,9 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
  ### 影响性能的地方
   1. 取余操作<br>
   2. 存在warp divergence ：只有满足tid % (2 * s) == 0才是有效线程<br>
-  3. 有一半的线程处于闲置，甚至一直到最后
+  3. 有一半的线程处于闲置，一直到最后
 
-## 解决warp divergence
+## V2. 解决warp divergence
 
  > 💡 **Note**:warp divegence是指在一个warp中 如果存在if_else语句就会使的不同的线程执行不同的指令，产生线程束分歧，这些指令是串行执行的，只有执行同一指令的线程可以同时工作，其他线程会处于等待状态，影响性能。
 
@@ -109,7 +109,8 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
  ```
  - 与naive Reduce相比 只是改变了if判断语句：
    ![优化示意图](Figure/reduce/naive.jpg)
-   在naive中，每个thread对应的是shared memory中的每个元素，而经过优化后，现在每个thread对应的是threadIDs（也就是图中的橙色圆圈）。
+
+   **在naive中，每个thread对应的是shared memory中的每个元素，而经过优化后，现在每个thread对应的是threadIDs（也就是图中的橙色圆圈）。**
    <!-- - 在第一次迭代中0-3号warp满足if，执行相加指令，4-7号warp不满足，线程处于等待状态；
    - 第二次迭代时，只有0和1号warp执行；
    - 第三次迭代只有0号warp执行指令；
@@ -126,11 +127,11 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
         s = 16: thread0访问sdata[0]和sdata[16],thread1访问sdata[32]和sdata[48],存在bank conflict。
   2. 有一半的线程处于闲置，甚至一直到最后
 
-## 解决bank conflict
+## V3. 解决bank conflict
  > 💡 **Note**: 多个线程、同时、同一bank的不同地址 ➡️ bank conflict<br>
 多个线程、同时、同一bank的同一地址 ➡️ 广播机制
 
- 由于存在bank冲突，解决办法是将for循环逆着，使第0个元素与第128个元素相加，由于128是32的倍数，一个warp内的线程对应不同的bank，同时一个线程访问一个bank中的两个数据，因此避免了bank conflict。
+ 由于存在bank冲突，解决办法是将for循环逆着，使第0个元素与第128个元素相加，由于128是32的倍数，一个warp内的线程对应不同的bank，同时一个线程访问一个bank中的两个不同的数据，因此避免了bank conflict。
  ![](Figure/reduce/bank%20conflict.jpg)
  ```cpp
  __global__ void reducev3 (float* d_in, float* d_out) {
@@ -159,7 +160,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
  ### 影响性能的地方
    1. 有一半的线程处于闲置，甚至一直到最后
 
-## 解决idle线程问题
+## V4. 解决idle线程问题
  
  由于在上面几个优化方案reduce过程中始终有一半线程会处于等待状态，所以为了进一步提升性能，在进行for循环前让每个线程先进行一次相加，所以现在一个blockDim.x是上面的两倍，也就是512个线程。
  ```cpp
@@ -187,7 +188,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
  - sdata[tid] = d_in[i] + d_in[i + blockDim.x]<br>
     tid一次加载相距blockDim.x的两个数据，进行相加将计算结果存于shared memory中。
  
-## 展开最后一维减少同步
+## V5. 展开最后一维减少同步
  因为GPU的最基本的调度单元是warp，当规约过程中的满足条件的线程数小于32时，实际上只有一个warp在工作；由于一个warp内所有的thread会以SIMD的模式自动执行相同的指令，无需__syncthreads()，所以在最后一个warp相加的时候，可以完全展开，以减少额外同步所消耗的性能。
  > 💡 **Note**:SIMD是指一条指令同时用于处理多个数据；同一个 warp 中的所有线程，在同一个时钟周期内，执行相同的指令，只是操作的数据不同。
 
@@ -233,7 +234,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
      - sdata[tid]存放总和。
 ![](Figure/reduce/展开最后一维.jpg)
 
-## 使用shuffle指令
+## V6. 使用shuffle指令
  warp shuffle允许同一warp内的线程可以直接在寄存器内访问数据，这一实现是硬件层面的。
 
  ```cpp
@@ -307,7 +308,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
     - 对第一个block内的warp进行规约
  ### 下一步优化
     使用向量化访存
-## 使用向量化访存
+## V7. 使用向量化访存
  float处理一个元素需要发射一次指令，而float4发射一次指令可以处理四个元素，有利于提升吞吐率和带宽利用率。
  ```cpp
  __device__ float warpReduce(float num) {
