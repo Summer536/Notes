@@ -20,9 +20,9 @@ PagedAttention是对kv cache所占空间的分页管理，是一个典型的**�
 
 <!-- more -->
 
-# 一、背景
+## 一、背景
 
-## 1. kv cache
+### 1. kv cache
 PagedAttention主要是对kv cache所占空间的分页管理，因此本文有必要先来简单介绍一下kv cache。
 
 1. **kv cache的来源**：
@@ -38,7 +38,7 @@ decoder推理中，对于每个输入的 prompt，在计算第一个 token 输�
 K=input乘Wk，V=input乘Wv，我们还需要去显存中读取这两个linear的weight，weight的shape为[batch size, seqlen, embedding size, embedding size]，还是带入以上的取值，那么这**两个weight的参数量为4096 * 80 * 2 * 8192 * 8192** , 查阅A100和H100的显存带宽可以知道，已经是最先进的HBM了，不是老的GDDR了，A100 HBM带宽为2 TB/s，H100 HBM带宽为3.35 TB/s，那么带宽/参数大小就是读取时间，**大约有几十秒，这显然延迟太高了**，还不说每次token generation都要去读然后来计算K V，所以kv cache非常有必要，即使占了很大显存都要用。
 
 
-## 2. 新的挑战
+### 2. 新的挑战
 kvcache的出现，确实节省了decoder阶段的计算量，加快了其推理速度，但是也带来了新的挑战。kv cache所占的空间也确实是大且有浪费的。
 
 KV cache有它独特的地方：**它在解码时会动态变化，并且输出长度和生命周期也是不能提前知道的。这些特性导致现存系统的如下问题**：
@@ -49,13 +49,21 @@ KV cache有它独特的地方：**它在解码时会动态变化，并且输出�
 
 那么，对症下药，解决办法主要集中在两个方面：
 
-1. KV cache不一定必须存放在连续的空间；
-2. KV cache不一定必须按照max seq len来申请，可以动态的根据当前senlen的长度来定；
+1. **KV cache不一定必须存放在连续的空间**；
+2. **KV cache不一定必须按照max seq len来申请，可以动态的根据当前senlen的长度来定**；
+
+### 3. 分页管理
+PagedAttention 受到了操作系统的虚拟内存和分页机制的启发，这里简要介绍一下操作系统的分页管理。
+
+操作系统把内存划分成固定大小的分页(page)，一个进程的虚拟内存就是一系列分页。在用户(进程)看来，它的地址空间是连续的，但实际不然。操作系统会把每个分页和物理的分页建立映射。比如一个页面32k，进程的虚拟内存是320k(实际当然远大于此，比如4GB)，也就是10个分页。目前进程在使用前3个页面，那么操作系统就会把这3个页面真正的加载到物理内存里，剩下那7个页面可能缓存在磁盘里。当进程访问第4个页面时，会发生缺页中断，然后去缓存里找到这个页面放到内存，并且建立虚拟内存和物理内存的映射。如果物理内存不够用了，操作系统也会把暂时不用的分页换到磁盘缓存里。
+
+![](Figure/pagedattention/6.png)
 
 
-# 二、PagedAttention思想
 
-## 1. PagedAttention方案详解
+## 二、PagedAttention思想
+
+### 1. PagedAttention方案详解
 受操作系统中虚拟内存和分页机制启发，vLLM 提出了 PagedAttention 注意力算法，以实现 KV Cache 的动态内存分配，而不是像之前一样为每个 seq 都分配固定大小的 [max_seq_len, hidden_size] 连续内存空间用于存储 kv cache。
 
 具体来说，PagedAttention **将每个序列从逻辑上划分为一定数量的 blocks（块），每个 block 包含每个 seq 一定数量 tokens 的 key 和 value**，并把这些**逻辑 blocks 通过 block table 映射到固定大小的 物理 blocks 上**，物理 blocks 可能不连续，即 kv 可能不连续分布。一句话总结就是构建 blocks 表， 并将 seq 的 kv tokens 划分成逻辑 blocks 并映射到物理 blocks 上。
@@ -78,12 +86,12 @@ PagedAttention 这种结构类似于操作系统中的虚拟内存，其中将�
 
 在上图的例子里，有两个请求。我们可以看到**两个逻辑相邻的block物理上并不需要相邻。相反，两个请求最后一个物理块(3和2)是相邻的**，这反而可以让kernel的效率更高（因为kernel的读取只是最后生成的Token，之前的不管，这些不同序列生成的最后Token对应的不同Block（如上图的Block2和Block3）在内存上连续的）。
 
-## 2. PagedAttention的内存共享优势
+### 2. PagedAttention的内存共享优势
 PagedAttention 借助块表实现了灵活的内存共享机制。类似于进程间共享物理页面的方式，PagedAttention 中的不同序列可以通过将各自的逻辑块映射到相同的物理块来共享内存资源。为了确保共享的安全性，PagedAttention 跟踪物理块的引用次数，并采用**写时复制（copy-on-write）策略**以防止数据冲突。
 
 ![](Figure/pagedattention/multiple_outputs.gif)
 
-### 并行采样(Parallel sampling)
+#### 并行采样(Parallel sampling)
 在代码生成等常见，为了结果的多样性，对于同一个prompt，我们可能会在每一步都随机采样多个(而不是一个)token。
 
 ![](Figure/pagedattention/3.png)
@@ -92,7 +100,7 @@ PagedAttention 借助块表实现了灵活的内存共享机制。类似于进�
 
 如果Prompt很长，则这种共享会非常有价值。
 
-### beam search
+#### beam search
 beam search是在每一个时刻都保留k个(有时候k会变，比如topp，但是不影响原理)最优路径。比如下图：
 ![](Figure/pagedattention/4.png)
 
@@ -100,18 +108,18 @@ beam search是在每一个时刻都保留k个(有时候k会变，比如topp，�
 
 前面也说过，beam search的top路径会有很多相似的子路径，因此PagedAttention能够充分利用这一点来提高共享比例。
 
-### 共享前缀
+#### 共享前缀
 在很多应用中，比如In-context learning，我们会增加很长的few-shot examples。比如：
 
 ![](Figure/pagedattention/5.png)
 上面是一个机器翻译的例子，在input之前有很长的前缀。另外包括chatbot，我们也会设置system角色的prompt。这些都是可以共享的。
 
 
-# 三、PagedAttention源码解析
+##  三、PagedAttention源码解析
 
 
 
-# 参考资料
+## 参考资料
 1. [Efficient Memory Management for Large Language Model Serving with PagedAttention](https://arxiv.org/pdf/2309.06180)
 
 2. [PagedAttention论文解读](https://fancyerii.github.io/2023/11/01/pagedattention/)
