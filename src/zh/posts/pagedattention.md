@@ -327,7 +327,7 @@ ut入口在test_attention.py的test_single_query_cached_kv_attention函数，重
     )
 ```
 
-### 5. 总结
+## 四、总结
 PagedAttention 的核心创新在于**分页式键值缓存（KV Cache）管理机制** ，其灵感源自操作系统虚拟内存的分页策略。与传统连续分配的 KV 缓存不同，它将键值对划分为固定大小的“物理块”（block），并通过 **块映射表（Block Table）** 实现非连续内存管理。这种设计打破了传统注意力机制对连续显存的依赖，显著提升了显存利用率，解决了长序列推理中显存浪费和长度限制的瓶颈问题。
 
 其次，其 GPU 并行优化策略 具备创新性：通过 **线程组（Thread Group）协作** 和 **向量化访存** 技术，将多线程协作细化到单个 token 的 head 数据加载，结合 warp 级并行处理物理块，最大化内存带宽利用率。此外，支持 GQA（Grouped Query Attention） 和 ALiBi（Positional Bias） 等变体，通过 head_mapping 和 token_idx 实现多头共享 KV 缓存及动态位置编码，进一步降低计算冗余并适配多样化模型架构。
