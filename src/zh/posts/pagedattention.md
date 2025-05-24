@@ -116,8 +116,223 @@ beam search是在每一个时刻都保留k个(有时候k会变，比如topp，�
 
 
 ##  三、PagedAttention源码解析
+### 1. PagedAttention kernel签名
+PagedAttention 内核的实现函数和常规 Attention 的实现相比**最明显的就是多了 blocks 相关参数**，以及 k_cache 的尺寸变成了 [num_blocks, num_kv_heads, head_size/x, block_size, x]，很明显了多了 num_blocks 和 block_size 维度（v_cache 变量也是），用于表示一个 seq 用多少个 blocks 存储，以及每个 block 存储多少个 tokens。
+```c++
+__global__ void single_query_cached_kv_attention_kernel(
+  scalar_t* __restrict__ out,             // [bs, num_heads, head_size]
+  const scalar_t* __restrict__ q,         // [bs, num_heads, head_size]
+  const scalar_t* __restrict__ k_cache,   // [num_blocks, num_kv_heads, head_size/x, block_size, x]，最后一个x是vectorize，一个thread fetch一个vector
+  const scalar_t* __restrict__ v_cache,   // [num_blocks, num_kv_heads, head_size, block_size], num_blocks * block_size=seqlen
+  const int* __restrict__ head_mapping,   // [num_heads]，q与kv的head map
+  const float scale,
+  const int* __restrict__ block_tables,   // [bs, max_num_blocks_per_seq],2d数组，每个子数组是每个seq的存储kv的physical block nums
+  const int* __restrict__ context_lens,   // [bs]，每个句子的长度
+  const int max_num_blocks_per_seq, //(max(context_lens) + block_size - 1) / block_size 
+  const float* __restrict__ alibi_slopes, // [num_heads]
+  const int q_stride,
+  const int kv_block_stride,//类似于pytorch的stride，每个physical block的stride
+  const int kv_head_stride) //类似于pytorch的stride，每个head的stride
+
+```
+| 参数名             | 类型                            | 含义                                                                                   |
+|------------------|-------------------------------|------------------------------------------------------------------------------------|
+| `out`            | `scalar_t*`                   | 输出结果，attention 的输出值，形状为 `[bs, num_heads, head_size]`                |
+| `q`              | `const scalar_t*`             | 查询向量 Q，形状为 `[bs, num_heads, head_size]`                                 |
+| `k_cache`        | `const scalar_t*`             | 分页存储的 Key 缓存，形状为 `[num_blocks, num_kv_heads, head_size/x, block_size, x]`   |
+| `v_cache`        | `const scalar_t*`             | 分页存储的 Value 缓存，形状为 `[num_blocks, num_kv_heads, head_size, block_size]`      |
+| `head_mapping`   | `const int*`                  | Q 头到 KV 头的映射数组，用于 GQA/MQA，形状为 `[num_heads]`                              |
+| `scale`          | `const float`                 | softmax 前的缩放因子（通常是 `1.0 / sqrt(head_size)`）                                 |
+| `block_tables`   | `const int*`                  | 每个 sequence 使用的物理块编号表，形状为 `[bs, max_num_blocks_per_seq]`           |
+| `context_lens`   | `const int*`                  | 每个 sequence 的实际长度，形状为 `[bs]`                                          |
+| `max_num_blocks_per_seq` | `const int`         | 每个 sequence 最多使用的 block 数量                                                   |
+| `alibi_slopes`   | `const float*`                | ALiBi 位置编码的斜率参数，形状为 `[num_heads]`                                         |
+| `q_stride`       | `const int`                   | Q 张量的 stride，用于定位数据                                                         |
+| `kv_block_stride`| `const int`                   | KV 缓存中每个 block 的 stride                                                         |
+| `kv_head_stride` | `const int`                   | KV 缓存中每个 head 的 stride                                                          |
+
+- **scalar_t**: 可变的数据类型
+- __restrict__：告诉编译器，指针是唯一的，不会被其他指针修改。
+
+在看具体的kernel前，必须要知道每个block和thread代表什么，这里每个block x处理一个head，每个block y处理一个seq，每个thread x处理最低维度head size的具体的计算。
 
 
+```c++
+dim3 grid(num_heads, num_seqs); // 每个head处理一个seq
+dim3 block(NUM_THREADS); // 每个thread处理head size的具体的计算
+```
+
+### 2. kernel 主逻辑
+
+- 配置线程块内的线程如何组织（thread group 大小、warp 数量）
+- 每个线程处理的数据粒度（每个 thread 处理 head_size 中的部分数据）
+- 向量化加载 Key/Query 数据以提升内存带宽利用率
+- 明确 block 和 grid 的映射关系：一个 block 负责一个 attention head，blockIdx.y 对应 sequence ID
+
+```c++
+/////////////////1. 线程组大小设置/////////////////
+  constexpr int THREAD_GROUP_SIZE = MAX(WARP_SIZE / BLOCK_SIZE, 1);// 每个thread_group 处理blocksize中的1个token，每个token又有numheads * headsize个element，每个block有block size个token，WARP_SIZE一般=32
+
+/////////////////2. 线程组数量/////////////////
+  constexpr int NUM_THREAD_GROUPS = NUM_THREADS / THREAD_GROUP_SIZE; // Note: This assumes THREAD_GROUP_SIZE divides NUM_THREADS
+  //这个值表示有多少个 thread groups 在并行工作。
+
+/////////////////3. 每组处理的 token 数量/////////////////
+  //每组thread处理的token数量，最小为1
+  constexpr int NUM_TOKENS_PER_THREAD_GROUP = (BLOCK_SIZE + WARP_SIZE - 1) / WARP_SIZE;
+
+/////////////////4. Warp 数量与线程信息提取/////////////////
+  constexpr int NUM_WARPS = NUM_THREADS / WARP_SIZE; 
+  const int thread_idx = threadIdx.x; //线程索引
+  const int warp_idx = thread_idx / WARP_SIZE; //warp编号
+  const int lane = thread_idx % WARP_SIZE; //线程在warp中的编号
+
+/////////////////5. 线程组与block的映射关系/////////////////
+  const int head_idx = blockIdx.x; // 一个block负责一个head，headsize*blocksize的数据
+  const int num_heads = gridDim.x; // 总共有多少个head
+  const int kv_head_idx = head_mapping[head_idx]; // q head id --> kv head id
+  //head_mapping 是为了支持 GQA（Grouped Query Attention），允许不同 Q head 共享同一个 KV head
+  const int seq_idx = blockIdx.y; // y维度的一个block负责一个seq
+
+/////////////////6. 向量化访存优化/////////////////
+  // 每个thread group 向量化load&store
+  constexpr int VEC_SIZE = MAX(16 / (THREAD_GROUP_SIZE * sizeof(scalar_t)), 1); 
+  using K_vec = typename Vec<scalar_t, VEC_SIZE>::Type;
+  using Q_vec = typename Vec<scalar_t, VEC_SIZE>::Type;
+
+/////////////////7. 每个线程处理的数据量/////////////////
+  // 1个thread group处理一个head里面的head size
+  constexpr int NUM_ELEMS_PER_THREAD = HEAD_SIZE / THREAD_GROUP_SIZE;
+  constexpr int NUM_VECS_PER_THREAD = NUM_ELEMS_PER_THREAD / VEC_SIZE;
+
+/////////////////8. 当前线程在 thread group 中的位置/////////////////
+  // 当前thread所在的thread group
+  const int thread_group_idx = thread_idx / THREAD_GROUP_SIZE;
+  // 当前thread在thread group内的offset
+  const int thread_group_offset = thread_idx % THREAD_GROUP_SIZE;
+```
+
+搞明白了这些基本信息后，才方便写后续的CUDA kernel逻辑，比如循环怎么个循环法，每个block和每个thread算哪部分，现在开始计算MHA，q还是照常load。
+
+```c++
+  const scalar_t* q_ptr = q + seq_idx * q_stride + head_idx * HEAD_SIZE;//获取当前 Q 的指针位置
+  // q：输入的 Q 向量张量，形状为 [num_seqs, num_heads, head_size]
+  // seq_idx：当前 sequence ID（由 blockIdx.y 提供）
+  // head_idx：当前 attention head ID（由 blockIdx.x 提供）
+  // q_stride：Q 张量中每个 sequence 的 stride（即 num_heads * head_size）
+
+  //每个block x负责一个head，那么这里申请一块shared mem来存每个thread x读到的head size维度数据
+  //shape为[线程数量][每个线程的向量数量]
+  __shared__ Q_vec q_vecs[THREAD_GROUP_SIZE][NUM_VECS_PER_THREAD];
+  //Q_vec 是一个向量类型（如 float4），表示一次读取 VEC_SIZE 个元素
+  //THREAD_GROUP_SIZE：每个 thread group 中有多少个线程
+  //NUM_VECS_PER_THREAD：每个线程需要读多少个向量（即整个 head_size 分成多少份 vector）
+
+  for (int i = thread_group_idx; i < NUM_VECS_PER_THREAD; i += NUM_THREAD_GROUPS) {
+    //i 表示当前线程在该线程组内要处理第几个向量块（vec）
+    //循环步长是 NUM_THREAD_GROUPS，表示多个线程组之间轮流处理不同的 vec
+
+    const int vec_idx = thread_group_offset + i * THREAD_GROUP_SIZE;//计算当前线程要读取的偏移量
+    //thread_group_offset：当前线程在其所属线程组内的编号（0 ~ THREAD_GROUP_SIZE - 1）
+    //i * THREAD_GROUP_SIZE：当前处理的是第 i 轮向量块
+    //vec_idx：在整个 head_size 维度上的向量索引
+
+    // 每个thread读取的q vector都放在q_vecs, 求出当前thread处理的q的最后一维的offset=q_ptr + vec_idx * VEC_SIZE
+    q_vecs[thread_group_offset][i] = *reinterpret_cast<const Q_vec*>(q_ptr + vec_idx * VEC_SIZE);
+  }
+```
+
+### 3. kv cache的读取
+接下来的重点在于如何去计算这个token，以及token的head size offset，找到后load其kv进寄存器与q做计算即可。这部分也是**整个pagedattention的核心**。
+```c++
+///////////////1. 定位当前 sequence 的 block table 和长度////////
+  const int* block_table = block_tables + seq_idx * max_num_blocks_per_seq;
+  const int context_len = context_lens[seq_idx];
+
+///////////////2. 计算当前 sequence 的 block 数量////////
+  const int num_blocks = (context_len + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
+///////////////3. 每个warp去读取一个k的physical block，循环遍历////////
+  for (int block_idx = warp_idx; block_idx < num_blocks; block_idx += NUM_WARPS) {
+    // 获取当前 block 的物理编号
+    const int physical_block_number = block_table[block_idx];//physical block数量
+
+///////////////4. 在当前physical block中找到当前thread group负责的局部token id////////
+    for (int i = 0; i < NUM_TOKENS_PER_THREAD_GROUP; i++) {
+      // 在当前physical block中找到当前thread group负责的局部token id，thread group 负责的 token 数量为 NUM_TOKENS_PER_THREAD_GROUP
+      const int physical_block_offset = (thread_group_idx + i * WARP_SIZE) % BLOCK_SIZE;
+      // 求出token在当前seq的所有block的全局token id
+      const int token_idx = block_idx * BLOCK_SIZE + physical_block_offset;
+      K_vec k_vecs[NUM_VECS_PER_THREAD];
+
+      for (int j = 0; j < NUM_VECS_PER_THREAD; j++) {
+        // k_cache.shape=[num_blocks, num_kv_heads, head_size/x, block_size, x]
+        // 根据以上shape算出当前seq的具体k cache的block size这一维度的offset
+        const scalar_t* k_ptr = k_cache + physical_block_number * kv_block_stride
+                                        + kv_head_idx * kv_head_stride
+                                        + physical_block_offset * x;
+        // 因为是向量化LOAD，还需要计算出vec的全局id，和vec内元素的局部offset
+        const int vec_idx = thread_group_offset + j * THREAD_GROUP_SIZE;
+        const int offset1 = (vec_idx * VEC_SIZE) / x;
+        const int offset2 = (vec_idx * VEC_SIZE) % x;
+        k_vecs[j] = *reinterpret_cast<const K_vec*>(k_ptr + offset1 * BLOCK_SIZE * x + offset2);
+      }
+      // 以上完成了对q k的load后就可以开始做scale dot production
+      float qk = scale * Qk_dot<scalar_t, THREAD_GROUP_SIZE>::dot(q_vecs[thread_group_offset], k_vecs);
+```
+做完计算后，后面会是用一系列reduce操作计算softmax，再像上面这样去load v，然后再做gemv，最终输出，代码比较类似，故在此省略。
+
+### 4. UT 测试
+ut入口在test_attention.py的test_single_query_cached_kv_attention函数，重点看看如何创建的block table和kv cache：（其实就是随机初始化了，主要知道里面表示的是什么东西就可以）
+
+```python
+ # Create the block tables.
+    max_num_blocks_per_seq = (max_context_len + block_size - 1) // block_size
+    block_tables = [] # 2d数组，每个子数组是一个seq的kv存储的physical block nums
+    for _ in range(num_seqs):
+        block_table = [
+            random.randint(0, NUM_BLOCKS - 1)
+            for _ in range(max_num_blocks_per_seq)
+        ]
+        block_tables.append(block_table)
+    block_tables = torch.tensor(block_tables, dtype=torch.int, device="cuda")
+
+    # Create the KV caches.
+    # 每个layer的kv cache
+    key_caches, value_caches = kv_cache_factory(NUM_BLOCKS, block_size, 1,
+                                                num_kv_heads, head_size, dtype,
+                                                seed)
+
+    # 测试第1个layer的kv cache就可
+
+    key_cache, value_cache = key_caches[0], value_caches[0] 
+```
+
+最后传到kernel，输出到output，大功告成
+
+```python
+    output = torch.empty_like(query)
+    attention_ops.single_query_cached_kv_attention(
+        output,
+        query,
+        key_cache,
+        value_cache,
+        head_mapping,
+        scale,
+        block_tables,
+        context_lens,
+        block_size,
+        max_context_len,
+        alibi_slopes,
+    )
+```
+
+### 5. 总结
+PagedAttention 的核心创新在于**分页式键值缓存（KV Cache）管理机制** ，其灵感源自操作系统虚拟内存的分页策略。与传统连续分配的 KV 缓存不同，它将键值对划分为固定大小的“物理块”（block），并通过 **块映射表（Block Table）** 实现非连续内存管理。这种设计打破了传统注意力机制对连续显存的依赖，显著提升了显存利用率，解决了长序列推理中显存浪费和长度限制的瓶颈问题。
+
+其次，其 GPU 并行优化策略 具备创新性：通过 **线程组（Thread Group）协作** 和 **向量化访存** 技术，将多线程协作细化到单个 token 的 head 数据加载，结合 warp 级并行处理物理块，最大化内存带宽利用率。此外，支持 GQA（Grouped Query Attention） 和 ALiBi（Positional Bias） 等变体，通过 head_mapping 和 token_idx 实现多头共享 KV 缓存及动态位置编码，进一步降低计算冗余并适配多样化模型架构。
+
+该技术推动了大语言模型推理的工程化突破，成为高效框架（如 vLLM、TensorRT-LLM）的核心组件，使 24GB 显存支持 500K tokens 生成成为可能，广泛应用于长文本生成、流式对话等场景，为长上下文理解和生成提供了高效解决方案。
 
 ## 参考资料
 1. [Efficient Memory Management for Large Language Model Serving with PagedAttention](https://arxiv.org/pdf/2309.06180)
