@@ -125,6 +125,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
       计算可知相邻两个线程访问的地址差为2s。<br>
         s = 1: thread0访问sdata[0]和sdata[1],thread1访问sdata[2]和sdata[3],不存在bank conflict；<br>
         s = 16: thread0访问sdata[0]和sdata[16],thread1访问sdata[32]和sdata[48],存在bank conflict。
+        ![](Figure/reduce/bank1.png)
   2. 有一半的线程处于闲置，甚至一直到最后
 
 ## V3. 解决bank conflict
