@@ -86,7 +86,7 @@ __global__ void matrixMulGPU(float* A, float* B, float* C, int M, int N, int K) 
 - 性能计算
   - 计算一个尺寸为bm*bn的矩阵C，需要从global memory中读取（bm,bk）的A和（bk,bn）的B，从global memory中读取的次数为bm*bk+bk*bn,需要计算$\frac{K}{bk}$次，所以总的读取次数位K（bm+bn）;
    - 总的block数目为：$\frac{M * N}{bm * bn}$;
-   - 最终的读取次数为：$MNK(\frac{1}{bm} + \frac{1}{bn})$<BR>
+   - 最终的读取次数为：$MNK(\frac{1}{bm} + \frac{1}{bn})$<br>
 由此与v1相比，访存量减少为$\frac{1}{2}*(\frac{1}{bn} + \frac{1}{bm})$，可知bn,bm越大时，分块情况下对global memory的读写次数越少，使得gpu相对花更多的时间在计算而不是在读数上，更有效利用gpu。
 - 待优化点<br>
 可以将global memory分块加载到shared memory中，那是否可以将shared memory分块加载到register中？
