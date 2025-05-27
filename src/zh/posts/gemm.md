@@ -629,7 +629,9 @@ int main() {
  
 ## 性能对比
 ![](Figure/gemm/性能对比.jpg)
-1. [https://zhuanlan.zhihu.com/p/410278370] -CUDA 矩阵乘法终极优化指南
-2. [https://zhuanlan.zhihu.com/p/435908830] - 深入浅出GPU优化系列：GEMM优化(一)
-3. [https://zhuanlan.zhihu.com/p/703256080] -从啥也不会到CUDA GEMM优化
-4. [https://blog.csdn.net/LostUnravel/article/details/138034380] -[CUDA 学习笔记] 如何优化 CUDA 矩阵乘内核以获得类似 cuBLAS 的性能: 工作日志
+
+## 参考资料
+1. [CUDA 矩阵乘法终极优化指南](https://zhuanlan.zhihu.com/p/410278370)
+2. [深入浅出GPU优化系列：GEMM优化(一)](https://zhuanlan.zhihu.com/p/435908830)
+3. [从啥也不会到CUDA GEMM优化](https://zhuanlan.zhihu.com/p/703256080)
+4. [CUDA 学习笔记-如何优化 CUDA 矩阵乘内核以获得类似 cuBLAS 的性能: 工作日志](https://blog.csdn.net/LostUnravel/article/details/138034380)
