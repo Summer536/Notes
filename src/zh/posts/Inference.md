@@ -202,7 +202,37 @@ Padding 带来的问题：
 2. [Fast Inference from Transformers via Speculative Decoding](https://proceedings.mlr.press/v202/leviathan23a/leviathan23a.pdf)
 
 
-
-
 ## 六. 介绍一下Deppseek的MLA（针对Hopper架构的优化），Hopper架构还引入了不同block得thread之间的共享内存机制？
-待更新
+### 1. 什么是低秩压缩？
+低秩压缩是一种**利用矩阵的低秩近似特性来显著减少数据存储量或模型参数量的技术**。它的核心思想基于线性代数中的一个重要概念：矩阵的秩。
+
+1. **秩是什么？**
+
+   - 一个矩阵的秩衡量的是其行（或列）向量中线性无关的最大数目。
+   - 简单理解，秩代表了矩阵所包含的独立信息或内在维度的数量。
+   - 例如：
+     - 一个单位矩阵（对角线为 1，其余为 0）的秩等于其维度（满秩）。
+     - 一个所有元素都是 1 的矩阵，秩为 1（因为所有行/列都线性相关）。
+     - 一个包含两行完全相同数据的矩阵，秩为 1（因为第二行不提供新信息）。
+
+2. **低秩矩阵：**
+
+   - 如果一个矩阵的实际秩 $r$ 远小于它的维度 $\min(m, n)$（其中 $m$ 是行数，$n$ 是列数），那么这个矩阵就被认为是低秩的。
+   - 很多现实世界的数据（如图像、用户-物品评分矩阵、某些神经网络层的权重更新）天然具有或近似具有低秩特性。这意味着它们包含的信息可以被更少的“基础”成分有效地表示。
+
+3. **低秩近似/压缩：**
+
+   - 给定一个大型矩阵 $W$（维度 $m \times n$），低秩压缩的目标是找到两个较小的矩阵 $A$（维度 $m \times r$）和 $B$（维度 $r \times n$），使得它们的乘积 $A \cdot B$ 尽可能地接近原始矩阵 $W$。
+   - 这里的 $r$ 就是目标秩，并且 $r \ll \min(m, n)$。
+   - 关键点：**存储 $A$ 和 $B$ 只需要 $m \cdot r + r \cdot n = r \cdot (m + n)$ 个参数，而存储原始 $W$ 需要 $m \cdot n$ 个参数。因为 $r$ 很小，所以 $r \cdot (m + n)$ 远小于 $m \cdot n$，实现了显著的压缩。**
+   - 数学基础：最优的低秩近似通常通过奇异值分解（SVD）来实现。SVD 将 $W$ 分解为 $U \cdot \Sigma \cdot V^T$，其中 $\Sigma$ 是一个包含奇异值（按重要性降序排列）的对角矩阵。保留前 $r$ 个最大的奇异值及其对应的 $U$ 和 $V$ 的列向量，就得到了秩为 $r$ 的最佳近似。
+
+
+### 2. MLA
+
+
+### 参考资料
+- [deepseek技术解读(1)-彻底理解MLA（Multi-Head Latent Attention）](https://zhuanlan.zhihu.com/p/16730036197)
+- [缓存与效果的极限拉扯：从MHA、MQA、GQA到MLA](https://spaces.ac.cn/archives/10091)
+- [MLA原理介绍（极简版）](https://zhuanlan.zhihu.com/p/21366443341)
+- [somequestion-deepseek](https://chat.deepseek.com/a/chat/s/44ba73d0-0e08-450b-9b3f-98de2eaaed6d)
