@@ -168,3 +168,41 @@ Padding 带来的问题：
 
 ## 四. 如何针对不同推理场景（单人、多用户、单卡、多卡）设置相应的参数最大化利用GPU性能？
 待更新
+
+## 五. 介绍一下投机推理（Speculative Decoding）？
+投机采样是一种可以从根本上解码计算访存比的方法，保证和使用原始模型的采样分布完全相同。**它使用两个模型：一个是原始目标模型，另一个是比原始模型小得多的近似模型。近似模型用于进行自回归串行采样，而大型模型则用于评估采样结果**。解码过程中，某些token的解码相对容易，某些token的解码则很困难。因此，简单的token生成可以交给小型模型处理，而困难的token则交给大型模型处理。这里的小型模型可以采用与原始模型相同的结构，但参数更少，或者干脆使用n-gram模型。小型模型不仅计算量较小，更重要的是减少了内存访问的需求。
+
+### 投机采样过程如下：
+
+1. 用小模型 $M_q$ 做自回归采样连续生成 $\gamma$ 个 tokens。
+2. 把生成的 $\gamma$ 个 tokens 和前缀拼接一起送进大模 $M_p$ 执行一次 forwards。
+3. 使用大、小模型 logits 结果做比对，如果发现某个 token 小模型生成的不好，重新采样这个 token。重复步骤 1。
+4. 如果小模型生成结果都满意，则用大模型采样下一个 token。重复步骤 1。
+
+第 2 步中，将 $\gamma$ 个 tokens 和前缀拼成一起作为大模型输入，和自回归相比，尽管计算量一样，但是 $\gamma$ 个 tokens 可以同时参与计算，计算访存比显著提升。
+
+第 3 步中，如何评价一个 token 生成的好坏？如果 $q(x) > p(x)$（$p, q$ 表示在大小模型采样概率，也就是 logits 归一化后的概率分布），则以一定 $1 - \frac{p(x)}{q(x)}$ 的概率拒绝这个 token 的生成，从一个新的概率分布 $p'(x) = \text{norm}(\max(0, p(x) - q(x)))$ 中重新采样一个 token。
+
+**通俗来讲就是$p(x) < q(x)$的时候应该是小模型分布和大模型的分布存在突变(小模型出错的地方), 需要一定概率放弃, 然后从正常部分$[p(x)>q(x)]$的分布中去采样。**
+
+我们看性能分析结果，下图是一个 encoder-decoder 结构网络的时间分解图。顶部一行显示了 $\gamma=7$ 的投机采样，中间一行显示了 $\gamma=3$ 的投机解码，$\gamma$ 是小模型一次生成 token 的数目。$M_p$ 是大模型，$M_q$ 是小模型。可见，使用投机采样，解码时间大幅缩减。
+
+![](Figure/inference/Ssampling.png)
+
+
+### 不同的投机采样策略
+除了采用大小模型外，还有其他的一些方法进行投机推理,如线性头方案、前缀树方案。
+
+![](Figure/inference/Ssampilng1.png)
+
+
+### 参考资料
+1. [大模型推理妙招—投机采样（Speculative Decoding）](https://zhuanlan.zhihu.com/p/651359908)
+
+2. [Fast Inference from Transformers via Speculative Decoding](https://proceedings.mlr.press/v202/leviathan23a/leviathan23a.pdf)
+
+
+
+
+## 六. 介绍一下Deppseek的MLA（针对Hopper架构的优化），Hopper架构还引入了不同block得thread之间的共享内存机制？
+待更新
