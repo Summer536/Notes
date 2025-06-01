@@ -34,7 +34,7 @@ isOriginal: true
 - long int: 4字节
 - long long int: 8字节
 
-头文件<climits>定义了符号常量，如INT_MAX, INT_MIN, LONG_MAX, LONG_MIN, LLONG_MAX, LLONG_MIN等。表示整型变量的最大值和最小值。
+头文件climits定义了符号常量，如INT_MAX, INT_MIN, LONG_MAX, LONG_MIN, LLONG_MAX, LLONG_MIN等。表示整型变量的最大值和最小值。
 
 无符号整型：表示非负整数，可增大变量范围，但只能表示正数。内存大小与上面对应的整型相同。（只是把第一位即表示正负的符号位去掉，换成表示大小的位）
 unsigned char, unsigned short, unsigned int, unsigned long, unsigned long long
@@ -213,6 +213,15 @@ while (flag == 0) {
         void func();
     }
     ```
+
+### 10. 前置++和后置++的区别
+前置++和后置++都是自增运算符，但是它们有不同的返回值。
+前置++返回的是自增后的值，后置++返回的是自增前的值。
+```cpp
+int a = 10;
+int b = ++a; // b = 11, a = 11
+int c = a++; // c = 10, a = 11
+```
 
 
 
