@@ -51,7 +51,7 @@ unsigned char, unsigned short, unsigned int, unsigned long, unsigned long long
 ![](Figure/cpp/const.png)
 
 3. 常量引用：const int &a = 10; 表示引用的值是常量，不能通过引用修改。
-4. 常量成员函数，表示改函数不会修改对象的成员变量，允许const对象调用。
+4. 常量成员函数，表示该函数不会修改对象的成员变量，允许const对象调用。
     ```cpp
     class MyClass {
     public:
@@ -133,7 +133,7 @@ while (flag == 0) {
     - 静态函数不能被声明为volatile函数。
     - 静态函数不能被声明为extern函数。
 3. 静态成员变量：使用static修饰的成员变量为静态成员变量。
-所有类的对象共享同一个静态成员变量，且只初始化一次。静态成员函数必须外部定义，以便为其分配空间。
+所有类的对象共享同一个静态成员变量，且只初始化一次。静态成员变量必须外部定义，以便为其分配空间。
     ```cpp
     class ExampleClass ‹
     public:
