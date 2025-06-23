@@ -548,6 +548,23 @@ dynamic_cast 的限制：
     std::cout << p1.use_count() << std::endl; // 输出 2
     ```
 
+    **具体讲一下 shared.ptr.自动管理内存的原理引用计数的具体原理**
+    
+    **shared.ptr 引用计数什么时候会增加，什么时候会减少?**
+
+    引用计数的核心原理:
+    在 shared.ptr 的内部维护了一个计数器，来跟踪有多少个 shared.ptr 对象指向了某一个资源。当计数器的值减少到0的时候，shared.ptr.就会调用 delete(或者用户自定义的方法)来释放资源。
+
+    引用计数器何时增加:
+    1. 新建一个 shared.ptr 并指向了一个资源时。
+    2. 复制构造函数创建一个新的 shared.ptr.时。
+    3. 用复制运算符将一个 shared ptr 给另一个 shared ptr 对象赋值时。
+    
+    引用计数器何时减少:
+    1. 当一个 shared.ptr对象被销毁时，比如局部变量离开作用域，或者类成员变量析构时。
+    2. 当一个 shared.ptr对象不再指向一个资源时，例如通过 reset 方法或者赋值运算符指向另一个资源时。
+
+
     (3) weak_ptr：是对 shared_ptr 管理对象的**弱引用** ；不影响引用计数；**不能直接访问对象，必须通过 lock() 转换为 shared_ptr**；
     
     主要用于打破**循环引用**（在使用 std::shared_ptr 时，如果两个对象互相持有对方的 shared_ptr，就会形成循环引用（cyclic reference） 。这种情况下，它们的引用计数永远不会变为 0，即使这两个对象已经不再被外界使用，也无法释放！） ；
@@ -680,11 +697,294 @@ dynamic_cast 的限制：
 
 
 
-
-
-
-
 ## 三. C++面向对象编程
+
+### 1.面向对象的三大特性
+
+**🔐 C++ 封装（Encapsulation）**
+
+它将数据（成员变量）和操作数据的方法（成员函数）包装在一个类中，隐藏内部实现细节，仅对外提供访问接口。
+**提高了程序的安全性、可维护性、模块化程度 。**
+
+它的核心思想为三点：
+
+- 数据隐藏（Data Hiding）：使用 **private（只能在类内访问）** 或 **protected（可以在类内和子类访问）** 关键字限制外部直接访问类的成员变量。
+- 接口暴露（Interface Exposure）：使用 **public（可以被外部访问）** 关键字定义类的接口，提供访问权限。
+- 统一访问控制：所有对数据的操作都必须通过公开的方法进行，便于调试、日志记录、验证等。
+
+```cpp
+class Student {
+private:
+    std::string name;
+    int age;
+
+public:
+    // 设置姓名
+    void setName(const std::string& n) {
+        name = n;
+    }
+
+    // 设置年龄并做合法性检查
+    void setAge(int a) {
+    }
+
+    // 打印信息
+    void printInfo() const {
+    }
+};
+
+int main() {
+    Student s;
+    s.setName("Tom");
+    s.setAge(20);
+
+    s.printInfo();
+
+    // 下面这行无法编译，因为 name 和 age 是 private 成员
+    // s.age = -100;
+
+    return 0;
+}
+```
+
+**📚 C++ 继承（Inheritance）**
+
+它允许一个类（派生类 / 子类）继承另一个类（基类 / 父类）的属性和方法，实现代码复用和层次化设计。
+是实现“is-a”关系的重要机制（例如：Dog is an Animal）。
+
+```cpp
+class Animal {
+    public:
+        void eat() {
+            std::cout << "Animal is eating" << std::endl;
+        }
+    };
+
+class Dog : public Animal { // 继承了 Animal 类
+    public:
+        void bark() {
+            std::cout << "Dog is barking" << std::endl;
+        }
+    };
+
+int main() {
+    Dog d;
+    d.eat(); // 调用 继承自 Animal 类的 eat 方法
+    d.bark(); // 调用 Dog 类的 bark 方法
+    return 0;
+}
+```
+1. **分类：**
+    - 单继承：一个子类只有一个父类；
+    - 多继承：一个子类有多个父类（C++11 支持多继承）；
+        ```cpp
+        class A {
+        public:
+            void foo() { cout << "A::foo" << endl; }
+        };
+
+        class B {
+        public:
+            void bar() { cout << "B::bar" << endl; }
+        };
+
+        class C : public A, public B {}; //C 同时继承了 A 和 B 类(多继承)
+
+        int main() {
+            C c;
+            c.foo();  // 可以调用 A 的方法
+            c.bar();  // 可以调用 B 的方法
+            return 0;
+        }
+        ```
+    - 多级继承：一个子类有多个父类，每个父类又有父类；
+    - 菱形继承：一个子类有两个父类，其中一个父类有另一个父类；
+    ![](Figure/cpp/lingxing.png)
+
+2. **多重继承问题：**
+多重继承可能引入一些问题，如**菱形继承问题**，比如当一个类同时继承了两个拥有相同基类的类，而最终的派生类又同时继承了这两个类时，可能导致二义性和代码设计上的复杂性。为了解决这些问题，C++提供了**虚继承**，通过在继承声明中使用virtual关键字，可以避免在派生类中生成多个基类的实例，从而解决了菱形继承带来的二义性。
+
+    ```cpp
+    class A {
+    public:
+        int value;
+    };
+
+    class B : virtual public A {};
+    class C : virtual public A {};
+    class D : public B, public C {};
+
+    int main() {
+        D d;
+        d.value = 10;  // 正确：只有一份 value
+        return 0;
+    }
+    ```
+
+3. **继承中的构造函数与析构函数调用顺序**
+
+    - 构造函数：先调用基类构造函数，再调用成员对象构造函数（如果有），最后调用派生类构造函数；
+    - 析构函数：先调用派生类析构函数，再调用成员对象析构函数（如果有），最后调用基类析构函数；（和上面刚好相反）
+
+4. **继承中的成员访问权限（重要）**
+
+    子类不能访问父类的 private 成员，但可以访问父类的 protected 成员。
+
+    ![](Figure/cpp/jichengquanxian.png)
+
+
+**🌈 C++ 多态（Polymorphism）**
+
+多态是**指“一个接口，多种实现”，即：同一个接口在不同对象上有不同的行为**
+
+1. **多态分类：**
+面向对象中常说的“多态”一般指 **运行时多态** 。
+
+    - 编译时多态（静态绑定）：在编译阶段确定调用哪个函数。**实现方法：函数重载、运算符重载**
+    - 运行时多态（动态绑定）：在运行阶段确定调用哪个函数。**实现方法：虚函数+继承**
+
+2. **多态的核心机制：**
+
+    - 虚函数：使用 virtual 关键字声明，在基类中定义虚函数，派生类可以重写（override）它。
+允许通过基类指针或引用访问派生类的实现。
+    - 虚函数表：每个有虚函数的类都有一个虚函数表。
+对象内部有一个指向该表的指针（vptr），用于运行时查找正确的函数地址。
+    - 动态绑定：程序在运行时根据对象的实际类型决定调用哪个虚函数。
+
+3. **多态使用示例：**
+
+    ```cpp
+    class Animal {
+    public:
+        //1.基类声明虚函数：在基类中声明虚函数，使用 virtua1 关键字，以便派生类可以重写（override）这些函数。
+        virtual void speak() const { //virtual 声明虚函数，开启多态机制
+            cout << "Animal speaks" << endl;
+        }
+    };
+
+    class Dog : public Animal {
+    public:
+        //2. 派生类重写虚函数：在派生类中重写基类中声明的虚函数，使用 override 关键字
+        void speak() const override { // override 显式覆盖父类虚函数，增强可读性与安全性
+            cout << "Woof!" << endl;
+        }
+    };
+
+    class Cat : public Animal {
+    public:
+        void speak() const override {
+            cout << "Meow!" << endl;
+        }
+    };
+    ```
+    使用：
+
+    ```cpp
+    //3. 使用基类类型的指针或引用指向派生类对象。
+    Animal* ptr = new Dog();
+    //4. 调用虚函数：通过基类指针或引用调用虚函数。在运行时，系统会根据对象的实际类型来选择调用正确的函数实现多态。
+    ptr->speak();  // 输出 "Woof!"
+    delete ptr;
+    ptr = new Cat();
+    ptr->speak();  // 输出 "Meow!"
+    delete ptr;
+    //5. 虚函数表：编译器在对象的内存布局中维护了一个虚函数表，其中存储了指向实际函数的指针。这个表在运行时用于动态查找调用的函数。
+    ```
+
+### 2. 重载(overload)和重写(override)的区别
+**重写与重载的本质区别是，加入了override的修饰符的方法，此方法始终只有一个被你使用的方法。**
+
+**重载（Overload）**
+
+在**同一个类或作用域中定义多个同名函数**，参数列表不同（个数、类型、顺序），返回值类型不能作为重载依据，可用于普通函数、成员函数、运算符。
+
+规则：
+
+- 不能通过访问权限、返回类型、抛出的异常进行重载；
+- 不同的参数类型可以是不同的参数类型，不同的参数个数，不同的参数顺序（参数类型必须不一样）；
+- 方法的异常类型和数目不会对重载造成影响；
+
+
+✅ 构成重载的示例：
+```cpp
+void func(int a);
+void func(double a);         // 参数类型不同 → 重载
+void func(int a, int b);     // 参数个数不同 → 重载
+void func(const int& a);     // 参数类型相同但引用（原函数是传值，这个是常量引用，注意多了一个&）不同 → 重载 
+```
+
+❌ 不构成重载的示例：
+```cpp
+int func(int a);
+double func(int a);          // 仅返回值不同 → 不合法，无法重载
+int func(const int a);       // 重复定义（原函数是传值，这个依旧是传值），不构成重载
+```
+
+**重写（Override）**
+
+**子类重新定义父类中的虚函数（virtual）**，函数签名必须一致（返回值、函数名、参数列表），实现运行时多态（动态绑定）。
+
+规则：
+- 函数签名必须一致（返回值、函数名、参数列表）；
+- 必须使用 override 关键字，显式覆盖父类虚函数，增强可读性与安全性；
+- 必须使用 virtual 关键字，开启多态机制；
+- 静态方法不能被重写为非静态的方法；
+- 重写方法的访问修饰符一定要大于被重写方法的访问修饰符（public>protected>default>private）；
+
+
+✅ 构成重写的示例：
+```cpp
+class Base {
+public:
+    virtual void foo() {}
+};
+
+class Derived : public Base {
+public:
+    void foo() override {}   // 签名完全一致 → 重写
+};
+```
+
+❌ 不构成重写的示例：
+```cpp
+class Base {
+public:
+    void bar() {}             // 非虚函数
+};
+
+class Derived : public Base {
+public:
+    void bar() {}             // 不是虚函数 → 不构成重写，只是隐藏
+};
+```
+
+### 3. 成员函数/成员变量/静态成员函数/静态成员变量的区别
+![](Figure/cpp/jingtaichengyuan.png)
+1. **成员函数**
+- 成员函数可以分为普通成员函数和静态成员函数。
+- 普通成员函数使用对象调用，可以访问对象的成员变量。
+- 普通成员函数的声明和定义通常在类的内部，但定义时需要使用类名作为限定符。
+2. **成员变量**
+- 每个对象拥有一份成员变量的副本，它们在对象创建时分配，并在对象销毁时释放。
+- 成员变量的访问权限可以是 public、private 或 protected。
+3. **静态成员函数**
+- 静态成员函数**属于类而不是对象，因此可以直接通过类名调用，而不需要创建类的实例**。
+- 静态成员函数不能直接访问普通成员变量，因为它们没有隐含的 this 指针。
+- 静态成员函数的声明和定义也通常在类的内部，但在定义时需要使用类名作为限定符。
+4. **静态成员变量**
+- 静态成员变量是**属于类而不是对象的变量，它们在所有对象之间共享**。
+- 静态成员变量通常在类的声明中进行声明，但在类的定义外进行定义和初始化。
+- 静态成员变量可以通过类名或对象访问。
+
+### 4. 构造函数和析构函数
+
+
+
+
+
+
+
+
 
 ## 四. C++的STL
 
