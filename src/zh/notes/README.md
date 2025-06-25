@@ -13,6 +13,7 @@ category:
 ## 笔记列表
 
 - [DeepSpeed](https://summer536.github.io/Notes/zh/posts/DeepSpeed.html) - DeepSpeed分布式训练框架
+- [并行方法](https://summer536.github.io/Notes/zh/posts/parallel.html) - 并行方法
 - [Gemm](https://summer536.github.io/Notes/zh/posts/gemm.html) - GEMM优化
 - [Reduce](https://summer536.github.io/Notes/zh/posts/Reduce.html) - Reduce优化
 - [关于大模型推理的思考](https://summer536.github.io/Notes/zh/posts/Inference.html) - 大模型推理服务的一些常见问题
