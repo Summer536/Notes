@@ -28,7 +28,7 @@ __global__ void matrixMulGPU(float* A, float* B, float* C, int M, int N, int K) 
 
 ### 性能分析
 - 分析可知，线程每次计算一个c矩阵的元素，都需要从A矩阵和B矩阵中分别读取K个元素，所以从global memory中读取的次数为2K*MN，写的次数为M*N。由于在读取数据消耗了大量的时间，无法充分发挥GPU的算力。
-## V2. shanred memory 
+## V2. shared memory 
 > 💡 **Note**如何确定分块数量？每一个 Block 该负责多大的矩阵乘？每一个 thread 又应该负责多大的矩阵乘？[https://zhuanlan.zhihu.com/p/688610975]<br>
 
 > 💡 **Note**为什么沿着k维度切?<br>
