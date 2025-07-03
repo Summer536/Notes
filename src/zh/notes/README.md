@@ -12,6 +12,7 @@ category:
 
 ## 笔记列表
 
+- [AWQ](https://summer536.github.io/Notes/zh/posts/AWQ.html) - AWQ激活感知的权重量化
 - [DeepSpeed](https://summer536.github.io/Notes/zh/posts/DeepSpeed.html) - DeepSpeed分布式训练框架
 - [并行方法](https://summer536.github.io/Notes/zh/posts/parallel.html) - 并行方法
 - [Gemm](https://summer536.github.io/Notes/zh/posts/gemm.html) - GEMM优化
