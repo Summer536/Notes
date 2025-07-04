@@ -216,6 +216,29 @@ AWQ将权重矩阵按输出维度（即按通道）进行分组。例如，对�
 每个组内的所有权重共享相同的量化参数（如量化步长和零点）。
 这种方式既保证了量化的效率，又能够捕捉到组内权重参数的相似性。
 
+### 4. 使用vLLM读取AWQ量化后模型有什么注意事项？
+
+AWQ量化后的模型通常为INT4类型，但是使用vLLM进行推理时，需要显式指定如下配置：
+
+```python
+from vllm import LLM, SamplingParams
+
+llm = LLM(model="path/to/awq_quantized_model", 
+          quantization="awq", #显示指定awq类型
+          dtype="float16") #显式指定推理精度float16
+
+```
+
+- 为什么AWQ量化后的精度是INT4，dtype的参数是float16？
+
+    1.AWQ的混合精度特性：AWQ实际将原始FP16的**weight压缩为INT4类型**，但会为每个权重组（如128个权重为一组）保留一个**FP16格式的缩放因子（sclae）和零偏置（zero-point）**。推理时通过dequantization = int4_weight * FP16_scale + FP16_zero_point来动态恢复数值。
+
+    2.Pytorch要求张量有统一的dtype，因此整体标记为FP16
+
+    3.使用FP16进行推理计算对硬件非常友好。Nvidia的Tensor core对FP16计算有专门的优化，但对缺乏对INT4的原生计算单元。
+
+
+
 
 ## 总结
 作者提出的激活感知权重量化 (AWQ)，是一种用于 LLM 低位权重压缩的简便有效方法。基于权重在 LLM 中重要性不均的观察，**AWQ 采用逐通道缩放来减少关键权重的量化损失。AWQ 不会对校准集过拟合，并能够保留 LLM 在不同领域和模态中的通用能力**。它在语言建模方面优于现有方法，并可应用于指令微调的语言模型和多模态语言模型。
