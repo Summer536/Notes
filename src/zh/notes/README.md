@@ -12,6 +12,7 @@ category:
 
 ## 笔记列表
 
+- [Deepseek MLA](https://summer536.github.io/Notes/zh/posts/Deepseek_MLA.html) - MLA机制及其实现方法介绍
 - [AWQ](https://summer536.github.io/Notes/zh/posts/AWQ.html) - AWQ激活感知的权重量化
 - [DeepSpeed](https://summer536.github.io/Notes/zh/posts/DeepSpeed.html) - DeepSpeed分布式训练框架
 - [并行方法](https://summer536.github.io/Notes/zh/posts/parallel.html) - 并行方法
