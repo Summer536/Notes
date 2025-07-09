@@ -17,6 +17,8 @@ isOriginal: true
 
 本文将讲解Deepseek MLA的原理和实现。
 
+MLA通过使用接近MQA的存储空间，达到甚至超过MHA的性能。
+
 <!-- more -->
 
 ## 一、引言--Transformer and KVcache
@@ -137,12 +139,14 @@ GQA 在保持性能的同时显著降低了内存消耗，是当前主流大模�
 | **MHA**        | $2 \times l \times d_h \times n_h$  |
 | **MQA**        | $2 \times l \times d_h$         |
 | **GQA**        | $2 \times l \times d_h \times g$ |
-| **MLA**        | $l \times (d_c + d_q) \approx l \times d_h$ |
+| **MLA**        | $l \times (d_c + d_q) = l \times (4d_h + 0.5d_h) = l \times 4.5d_h$ |
 
 其中：
 - `l`: 模型层数（如 80）
 - `n_h`: 每层的 Head 数量（如 64）
 - `g`: 分组数（通常取值小于 `n_h` 且能整除）
+
+由此可见，MLA只使用了MQA的空间。但是它能达到MHA的性能。很是厉害！
 
 ---
 
@@ -346,15 +350,19 @@ $$
 
 位置编码使用 RoPE，但 RoPE 与低秩 KV 不兼容。具体来说，RoPE 对 Q 和 K 都是位置敏感的。如果我们为$k_t^C$应用 RoPE，那么公式（42）中的$W^{UK}$（K 的权重矩阵）将与位置敏感的 RoPE 矩阵耦合。因此，在推理过程中，$W^{UK}$无法再被吸收到$W^{UQ}$（Q 的权重矩阵）中，因为与当前生成的 token 相关的 RoPE 矩阵将位于$W^{UQ}$和$W^{UK}$之间，而矩阵乘法不满足交换律。因此，我们必须在推理过程中重新计算所有前缀 token 的 k，这将极大地降低推理效率。
 
-### 3.5 存储$k_t^R$和$c_t^{KV}$的维度是多少？与MHA、GQA相比，存储的小了多少？（单Token）
 
+## 四、MLA的落地优化
+待更新
+### 4.1 FlashMLA
+
+### 4.2 针对Hopper架构的优化
 
 
 ## 总结
 
+MLA通过低秩压缩，只缓存了$k_t^R$和$c_t^{KV}$，从而降低了KVcache的存储空间（几乎与MQA相当的KVcache使用量）。与此同时，它的效果居然达到甚至超过MHA的性能。
 
-
-## 待更新
+但是，MLA毕竟本质上还是一个通过计算来换取存储空间的方案，是在kvcache优化上给出的一份新答卷。相比于传统的KVcache方案它还是会引入一些额外的计算量，但是这些缺点我们是能接受的。毕竟，在GPU飞速发展的今天，计算能力已经很少成为瓶颈了。
 
 ## 参考资料
 
