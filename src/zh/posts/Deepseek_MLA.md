@@ -134,9 +134,10 @@ GQA 在保持性能的同时显著降低了内存消耗，是当前主流大模�
 
 | Attention 类型 | KV 数量（单 token） |
 |----------------|---------------------|
-| **MHA**        | $2 \times l \times n_h$ |
-| **MQA**        | $2 \times l$         |
-| **GQA**        | $2 \times l \times g$ |
+| **MHA**        | $2 \times l \times d_h \times n_h$  |
+| **MQA**        | $2 \times l \times d_h$         |
+| **GQA**        | $2 \times l \times d_h \times g$ |
+| **MLA**        | $l \times (d_c + d_q) \approx l \times d_h$ |
 
 其中：
 - `l`: 模型层数（如 80）
@@ -167,6 +168,8 @@ MLA完整的计算公式如下所示：
 
 ![](Figure/MLA/figure1.png)
 
+在论文中提到，每个Transformer层，只缓存了上述公式蓝框的向量$k_t^R$和$c_t^{KV}$！！！
+
 - $d_c$：MLA低秩压缩KV的维度，$(d_c = 512)$，kv_lora_rank
 - $d_q$：MLA低秩压缩Q的维度 $(d_q = 1536)$，q_lora_rank
 - $d_h$：是单个 head 的向量维度 （$d_h = 128$），num_hidden_size
@@ -175,13 +178,15 @@ MLA完整的计算公式如下所示：
 - $d_{nope}$：NoPE的维度，（$d_{nope} = 128$），qk_nope_head_dim
 - $d_{rope}$：RoPE的维度，（$d_{rope} = 64$），qk_rope_head_dim
 - $W^{DQ} \in \mathbb{R}^{d_q \times d}$是低秩变换矩阵
-- $W^{UQ} \in \mathbb{R}^{d_q \times n_h \times d_{nope}}$是升维度投影矩阵
-- $W^{QR} \in \mathbb{R}^{d_q \times n_h \times d_{rope}}$是低秩变换矩阵
+- $W^{UQ} \in \mathbb{R}^{d_q \times n_h \times d_{nope}}$是升维度投影矩阵（nope维度）
+- $W^{QR} \in \mathbb{R}^{d_q \times n_h \times d_{rope}}$是升维度投影矩阵（rope维度）
 - $W^{DKV} \in \mathbb{R}^{d_c \times d}$是低秩变换矩阵
+- $W^{UK}、W^{UV} \in \mathbb{R}^{d_c \times n_h \times d_{nope}}$是升维度投影矩阵（nope维度）
+- $W^{KR} \in \mathbb{R}^{d_c \times 1 \times d_{rope}}$是升维度投影矩阵（rope维度）
 
 #### 3.2.1 Q 向量计算
 
-1. 在 DeepSeek-V3 中，Q 向量采用了低秩压缩的方式。首先，将输入向量$h_t \in \mathbb{R}^{d}$投影到一个 **$d_q = 1536$**（对应模型配置文件中的 `q_lora_rank` 参数）维的低维空间，得到 Latent$c_t^Q$：
+1. 在 DeepSeek-V3 中，Q 向量采用了低秩压缩的方式。首先，将输入向量$h_t \in \mathbb{R}^{d}$投影到一个 **$d_q = 1536$**（对应模型配置文件中的 `q_lora_rank` 参数）维的低维空间，得到 Latent $c_t^Q$：
    $$
    c_t^Q = W^{DQ} h_t \in \mathbb{R}^{d_q}
    $$
@@ -201,9 +206,147 @@ MLA完整的计算公式如下所示：
    q_t = [q_t^C, q_t^R] \in \mathbb{R}^{n_h \times (d_{nope} + d_{rope})}
    $$
 
-#### 3.2.2 K 向量计算
+#### 3.2.2 K V向量计算
 
-### 3.3 MLA的优化
+1. 计算$KV$向量时，首先，将输入向量$h_t \in \mathbb{R}^{d}$投影到一个 **$d_c = 512$**（对应模型配置文件中的 `kv_lora_rank` 参数）维的低维空间，得到Latent $c_t^{KV}$：
+$$
+c_t^{KV} = W^{DKV} h_t \in \mathbb{R}^{d_c}
+$$
+
+2. 然后，和$Q$向量的计算过程类似，$K$向量的第一部分$k_t^C$是将$c_t^{KV}$通过投影解压缩到$\mathbb{R}^{n_h \times d_{nope}}$的多头向量空间上，计算公式如下：
+$$
+k_t^C = W^{UK} c_t^{KV} \in \mathbb{R}^{n_h \times d_{nope}}
+$$
+
+3. 和$Q$向量不同，$K$向量的第二部分的$k_t^R$是将输入向量投影到$\mathbb{R}^{1 \times d_{rope}}$单头向量空间，并应用RoPE嵌入位置信息，计算公式如下：
+$$
+k_t^R = \text{RoPE}(W^{KR} c_t^{KV}) \in \mathbb{R}^{1 \times d_{rope}}
+$$
+
+4. 最后，和$Q$不同，完整的$K$是将$k_t^R$广播到每个head后再与$k_t^C$拼接得到：
+$$
+k_t =
+\begin{bmatrix}
+k_{t,1}^C & k_t^R \\
+k_{t,2}^C & k_t^R \\
+\vdots & \vdots
+\end{bmatrix}
+\in \mathbb{R}^{n_h \times (d_{nope} + d_{rope})}
+$$
+
+上述广播后拼接的方式意味着，每个head的RoPE部分是完全相同的。
+
+$V$向量因为不需要执行ROPE操作，所以它的计算较为简单，直接将$c_t^{KV}$解压缩（升维）到$\mathbb{R}^{n_h \times d_{nope}}$即可：
+$$
+\mathbf{v}_t = W^{UV} c_t^{KV} \in \mathbb{R}^{n_h \times d_{nope}}
+$$
+
+**注意：$k_t^R$和$c_t^{KV}$是需要缓冲的向量（即需要存入KVcache中）。前面计算得到$q_t$、$k_t$和$\mathbf{v}_t$用来执行self-attention计算。**
+
+#### 3.2.3 Self-Attention 计算
+
+Self-Attention 的计算过程和传统的 **MHA** 一模一样。同样也是首先计算 **attention score**：
+
+$$
+p = \text{softmax}\left(\frac{q_t^\top k_t + \text{Mask}}{\sqrt{192}}\right) = \text{softmax}\left(\frac{q_t^C k_t^C + q_t^R k_t^R + \text{Mask}}{\sqrt{128 + 64}}\right) \in \mathbb{R}^{n_h \times n_h}
+$$
+
+计算对 $V$ 的加权和，并将所有 heads 压平（即 heads * head_dim），得到 Attention 输出：
+
+$$
+o = p \cdot \mathbf{v}_t \in \mathbb{R}^{n_h \times d_{nope}} \cong \mathbb{R}^{n_h \times d_{nope}}
+$$
+
+其中，$16384 = 128 \times 128 = \text{num attention heads} \times \text{v head dim}$。最后，经过另一个注意力输出矩阵的投影（7168 是 **hidden_size**，在参数17行），就能得到 MLA 的最终输出：
+
+$$
+u = W^O o \in \mathbb{R}^{7168}
+$$
+
+### 3.3 为什么只存$k_t^R$和$c_t^{KV}$就可以呢？
+
+1. 首先对于Q部分是现计算的，不保存。（公式38-40）
+
+2. 保存$c_t^{KV}$（公式41），不保存$W^{UK}$（公式42）因为它被吸收到了$W^{UQ}$(公式38)中。
+
+3. 保存$k_t^R$则$K_{t,i}$的计算已经完整。（公式43-44）
+
+4. 对于V，现在有$c_t^{KV}$，但是还缺一个$W^{UK}$，从哪儿来呢？
+  
+- 答：依旧是矩阵融合，它被吸收进了$W^{o}$(公式47)中。
+
+#### 矩阵吸收计算
+假设有两个向量变量 $x_1, x_2 \in \mathbb{R}^{3 \times 1}$ 都是 3 维的向量。有两个固定的变换矩阵 $P, Q \in \mathbb{R}^{2 \times 3}$ 分别对 $x_1, x_2$ 做线性变换得到新的向量 $x_1', x_2'$。最终求 $x_1', x_2'$ 两个向量的乘积。
+
+1.常规计算
+
+$$
+x_1' = P x_1 \tag{a}
+$$
+
+$$
+x_2' = Q x_2 \tag{b}
+$$
+
+$$
+x_1'^T x_2' = (P x_1)^T * (Q x_2) = x_1^T P^T Q x_2 \tag{c}
+$$
+
+2.矩阵吸收计算
+
+我们知道矩阵乘法是满足结合律的，对于公式 $(c)$ 我们可以先计算好两个变换矩阵的乘积：
+
+$$
+Q' = P^T Q \tag{d}
+$$
+
+然后通过 $Q'$ 与 $x_2$ 相乘，计算出 $x_2''$，而 $x_1$ 则不做任何操作：
+
+$$
+x_2'' = Q' x_2 \tag{e}
+$$
+
+再计算 $x_1$ 和 $x_2''$ 的乘积：
+
+$$
+x_1^T x_2'' = x_1^T Q' x_2 = x_1^T P^T Q x_2 = x_1'^T x_2' \tag{f}
+$$
+
+通过上面的例子我们可以看到，两种方法计算出的结果是一样的，但第二种方法是先做了矩阵乘法，相当于把 $x_1$ 的变换矩阵 $P$ 吸收到了 $x_2$ 的变换矩阵 $Q$ 里。
+
+#### $W^{UK}$矩阵的吸收
+假设当前无 RoPE，那么 $q, k$ 乘积计算如下，其中 $(i)$ 表示变换矩阵第 $i$ 个 Head 的切片：
+
+$$
+q_{t,i}^T \times k_{j,i} = (W_{(i)}^{UQ} c_t^Q)^T \times W_{(i)}^{UK} c_j^{KV} = (c_t^Q)^T \times (W_{(i)}^{UQ})^T W_{(i)}^{UK} \times c_j^{KV} 
+$$
+
+不加 RoPE，我们可以**提前计算好 $(W_{(i)}^{UQ})^T W_{(i)}^{UK}$**，也就上面说的 $W^{UK}$ 吸收到 $W^{UQ}$ 中，这样在做 $q$ 的变换的时候，也就同时计算了 $W^{UK}$ 矩阵的乘法。
+
+因此，我们只需要缓存 $c_j^{KV}$，而不是缓存 $W_{(i)}^{UK} \times c_j^{KV}$ 的结果。$c_j^{KV}$ 维度只有 $d_c=512$ 的长度，而 $W_{(i)}^{UK} \times c_j^{KV}$ 是个 $d_c \to d$ 的变换，也就是完全恢复了隐层的维度 $d = d_h * n_h = 128 * 128$。**这也是 MLA 的压缩 KV Cache 的核心原理。**
+
+### 3.4 为什么$q_t^R$和$k_t^R$不直接使用$q_t^C$和$k_t^C$乘RoPE对角矩阵，而是单独进行计算（公式39、43）呢？
+
+先说结论：**直接RoPE会使公式42中的$W^{UK}$和位置敏感的RoPE矩阵耦合，从而影响$W^{UK}$和$W^{UQ}$的吸收融合**
+
+#### 直接RoPE使得$W^{UK}$矩阵无法融合吸收
+
+加上 RoPE 后，计算 $q, k$ 乘积，会在 $(W_{(i)}^{UQ})^T$ 和 $W_{(i)}^{UK}$ 之间，增加一个融合了相对位置的变量 $\mathcal{R}_{t-j}$，如公式 (7) 所示：
+
+$$
+q_{t,i}^T \times k_{j,i} = (\mathcal{R}_t W_{(i)}^{UQ} c_t^Q)^T \times \mathcal{R}_j W_{(i)}^{UK} c_j^{KV}
+= (c_t^Q)^T \times (W_{(i)}^{UQ})^T \mathcal{R}_t^T \mathcal{R}_j W_{(i)}^{UK} \times c_j^{KV}
+$$
+
+$$
+\times c_j^{KV} = (c_t^Q)^T \times (W_{(i)}^{UQ})^T \mathcal{R}_{t-j} W_{(i)}^{UK} \times c_j^{KV}
+$$
+
+中间这个分量 $(W_{(i)}^{UQ})^T \mathcal{R}_{t-j} W_{(i)}^{UK}$ 是随这相对位置变化而变化的，并不是个固定的矩阵，因此并不能提前计算好。所以论文中说 RoPE 与低秩变换不兼容。原文内容如下：
+
+位置编码使用 RoPE，但 RoPE 与低秩 KV 不兼容。具体来说，RoPE 对 Q 和 K 都是位置敏感的。如果我们为$k_t^C$应用 RoPE，那么公式（42）中的$W^{UK}$（K 的权重矩阵）将与位置敏感的 RoPE 矩阵耦合。因此，在推理过程中，$W^{UK}$无法再被吸收到$W^{UQ}$（Q 的权重矩阵）中，因为与当前生成的 token 相关的 RoPE 矩阵将位于$W^{UQ}$和$W^{UK}$之间，而矩阵乘法不满足交换律。因此，我们必须在推理过程中重新计算所有前缀 token 的 k，这将极大地降低推理效率。
+
+### 3.5 存储$k_t^R$和$c_t^{KV}$的维度是多少？与MHA、GQA相比，存储的小了多少？（单Token）
 
 
 
