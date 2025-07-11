@@ -18,6 +18,10 @@ isOriginal: true
 本文将讲解四大并行方法：
 Data Parallel -> Model Parallel -> Pipeline Parallel -> Tensor Parallel
 
+给你8张卡、16张卡DP怎么做？TP怎么做？EP（专家并行）怎么做？甚至还要了解一下SP（序列并行）。
+
+如 tensor_parallel_size、pipeline_parallel_size、enable_expert_parallel、data_parallel_size）来手动设置 TP、PP、EP、DP 等并行策略
+
 <!-- more -->
 
 ## 一、Data Parallel
