@@ -27,7 +27,7 @@ DDP通过Ring AllReduce将通讯压力均衡到每个Worker上，解决了前者
 
 ## 一、大模型训练过程中GPU的存储
 ### 1.1 存储分类
-![](Figure/DeepSpeed/cunchu.jpg)
+![](Figure/Deepspeed/cunchu.jpg)
 
 存储主要分为两大块：Model States和Residual States。
 
@@ -49,7 +49,7 @@ DDP通过Ring AllReduce将通讯压力均衡到每个Worker上，解决了前者
 在分析这个问题前，我们需要来了解**混合精度训练**
 对于模型，我们肯定希望其参数越精准越好，也即我们用fp32（单精度浮点数，存储占4byte）来表示参数W。但是在forward和backward的过程中，fp32的计算开销也是庞大的。那么能否在计算的过程中，引入fp16或bf16（半精度浮点数，存储占2byte），来减轻计算压力呢？于是，混合精度训练就产生了，它的步骤如下图：
 
-![](Figure/DeepSpeed/mix.png)
+![](Figure/Deepspeed/mix.png)
 
 1. **存储一份fp32的parameter，momentum和variance（统称model states）**
 2. 在forward开始之前，额外开辟一块存储空间，将fp32 parameter减半到fp16 parameter。
@@ -63,7 +63,7 @@ DDP通过Ring AllReduce将通讯压力均衡到每个Worker上，解决了前者
 
 我们可以来计算模型在训练时需要的存储大小了，假设模型的参数W大小是$\Phi$，以byte为单位，存储如下：
 
-![](Figure/DeepSpeed/memory.jpg)
+![](Figure/Deepspeed/memory.jpg)
 
 这里**暂不将activation纳入统计范围**，原因是：
 
@@ -89,7 +89,7 @@ DDP通过Ring AllReduce将通讯压力均衡到每个Worker上，解决了前者
 - ZeRO Stage 2：对优化器状态和梯度进行分割
 - ZeRO Stage 3：对优化器状态、梯度和模型参数全部进行分割
 
-![](Figure/DeepSpeed/zero.jpg)
+![](Figure/Deepspeed/zero.jpg)
 
 
 ## 三、ZeRO-DP
@@ -100,7 +100,7 @@ DDP通过Ring AllReduce将通讯压力均衡到每个Worker上，解决了前者
 ### 3.1 ZeRO-Stage1（$P_{os}$：优化状态分割）
 ZeRO-Stage1的思路是：**将optimizer states进行分割**。每块GPU上各自维护一份。这样就减少了相当一部分的显存开销。如下图：
 
-![](Figure/DeepSpeed/zero1.jpg)
+![](Figure/Deepspeed/zero1.jpg)
 
 此时，整体数据并行的流程如下：
 
@@ -110,7 +110,7 @@ ZeRO-Stage1的思路是：**将optimizer states进行分割**。每块GPU上各�
 
 （3）得到完整梯度G，就可以对W做更新。我们知道W的更新由optimizer states和梯度共同决定。由于每块GPU上只保管部分optimizer states，因此只能将相应的W（蓝色部分）进行更新。
 
-![](Figure/DeepSpeed/zero1_2.jpg)
+![](Figure/Deepspeed/zero1_2.jpg)
 
 （4）此时，每块GPU上都有部分W没有完成更新（图中白色部分）。所以我们需要**对W做一次All-Gather(N分片->1合并->N广播)**，从别的GPU上把更新好的部分W取回来。产生**单卡通讯量$\Phi$**。
 
@@ -118,33 +118,33 @@ ZeRO-Stage1的思路是：**将optimizer states进行分割**。每块GPU上各�
 
 做完$P_{os}$后，设GPU个数为$N_d$，显存和通讯量的情况如下：
 
-![](Figure/DeepSpeed/zero1_3.jpg)
+![](Figure/Deepspeed/zero1_3.jpg)
 
 *增加1.5倍单卡通讯开销的基础上，将单卡存储降低了4倍*
 
 
 ### 3.2 ZeRO-Stage2（$P_{os}+P_{g}$：优化状态和梯度分割）
 更近一步，我们把梯度也拆开，每个GPU格子维护一块梯度。
-![](Figure/DeepSpeed/zero2_1.jpg)
+![](Figure/Deepspeed/zero2_1.jpg)
 此时，数据并行的整体流程如下：
 
 （1）每块GPU上存一份完整的参数W。将一个batch的数据分成3份，每块GPU各吃一份，做完一轮foward和backward后，算得一份完整的梯度（下图中绿色+白色）。
 
 （2）对**梯度做一次Reduce-Scatter**，保证每个GPU上所维持的那块梯度是聚合梯度。例如对GPU1，它负责维护G1，因此其他的GPU只需要把G1对应位置的梯度发给GPU1做加总就可。汇总完毕后，白色块对GPU无用，可以从显存中移除。**单卡通讯量$\Phi$**。
 
-![](Figure/DeepSpeed/zero2_2.jpg)
+![](Figure/Deepspeed/zero2_2.jpg)
 
 （3）每块GPU用自己对应的O和G去更新相应的W。更新完毕后，每块GPU维持了一块更新完毕的W。同理，**对W做一次All-Gather**，将别的GPU算好的W同步到自己这来。**单卡通讯量$\Phi$**。
 
 再次比对下显存和通讯量：
 
-![](Figure/DeepSpeed/zero2_3.jpg)
+![](Figure/Deepspeed/zero2_3.jpg)
 
 *和朴素DP相比，存储降了8倍，单卡通讯量持平*
 
 ### 3.3 ZeRO-Stage3（$P_{os}+P_{g}+P_{w}$：优化状态、梯度和参数分割）
 ZeRO的思想就是：**万物皆可切，万物皆可抛**。所以现在，我们把参数也切开。每块GPU置维持对应的optimizer states，gradients和parameters（即W）。
-![](Figure/DeepSpeed/zero3_1.jpg)
+![](Figure/Deepspeed/zero3_1.jpg)
 
 数据并行的流程如下：
 
@@ -160,7 +160,7 @@ ZeRO的思想就是：**万物皆可切，万物皆可抛**。所以现在，我
 
 显存和通讯量如下：
 
-![](Figure/DeepSpeed/zero3_2.jpg)
+![](Figure/Deepspeed/zero3_2.jpg)
 
 *我们用1.5倍的通讯开销，换回近120倍的显存！*
 
@@ -203,7 +203,7 @@ ZeRO-Offload的做法是：
 - **forward和backward计算量高**，因此和它们相关的部分，例如参数W（fp16），activation，就全**放入GPU**。
 - **update的部分计算量低**，因此和它相关的部分，全部**放入CPU中**。例如优化器中的W(fp32)，优化器中的一阶二阶动量（fp32）和gradients(fp16)等。
 
-![](Figure/DeepSpeed/zero_offload.jpg)
+![](Figure/Deepspeed/zero_offload.jpg)
 
 
 ### 5.2 ZeRO-Infinity
