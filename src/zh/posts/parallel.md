@@ -84,9 +84,9 @@ isOriginal: true
 #### 2.1 主要框架
 DDP与DP的实现过程类似，步骤1-4都一致，**不同的是第5步，DP是Server做AllReduce，而DDP是每个Worker做AllReduce**。实现的核心操作为**Ring AllReduce**，具体介绍见附录6.AllReduce。Ring-AllReduce通过环形拓扑结构，将数据分发到相邻的节点，从而实现高效的通信。
 
-单卡总通讯量为 $2(N - 1)\frac{\Phi}{N}$，随着 $N$ 的增大，可以近似为 $2\Phi$。全卡总通讯量为 $2N\Phi$。
+单卡总通讯量为$2(N - 1)\frac{\Phi}{N}$，随着$N$的增大，可以近似为$2\Phi$。全卡总通讯量为$2N\Phi$。
 
-而对前文的 DP（Data Parallelism）来说，它的 Server 承载的通讯量是 $N\Phi$，Workers 为 $N\Phi$，全卡总通讯量依然为 $2N\Phi$。**虽然通讯量相同，但搬运相同数据量的时间却不一定相同**。DDP 把通讯量均衡负载到了每一时刻的每个 Worker 上（**其通讯时间仅取决于逻辑环中最慢的两个 GPU 的连接，且不随GPU数量的增多而增多）**，而 DP 仅让 Server 做勤劳的搬运工。当越来越多的 GPU 分布在距离较远的机器上时，DP 的通讯时间是会增加的（**其通讯时间随GPU数量增多而增大**）。
+而对前文的 DP（Data Parallelism）来说，它的 Server 承载的通讯量是$N\Phi$，Workers 为$N\Phi$，全卡总通讯量依然为$2N\Phi$。**虽然通讯量相同，但搬运相同数据量的时间却不一定相同**。DDP 把通讯量均衡负载到了每一时刻的每个 Worker 上（**其通讯时间仅取决于逻辑环中最慢的两个 GPU 的连接，且不随GPU数量的增多而增多）**，而 DP 仅让 Server 做勤劳的搬运工。当越来越多的 GPU 分布在距离较远的机器上时，DP 的通讯时间是会增加的（**其通讯时间随GPU数量增多而增大**）。
 
 ![](Figure/parallel/ring.png)
 
