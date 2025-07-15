@@ -1,6 +1,6 @@
 ---
-title: 并行方法
-date: 2025-06-25
+title: 并行方法DP、TP、PP、EP、SP
+date: 2025-07-15
 readingTime: 300
 category:
   - 笔记
@@ -11,7 +11,7 @@ tag:
 isOriginal: true
 ---
 
-# 并行方法 
+# 并行方法DP、TP、PP、EP、SP
 
 ## 简介
 
