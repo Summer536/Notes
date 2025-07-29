@@ -110,12 +110,112 @@ ZeRO有三个阶段：
 
 
 ## 二、Model Parallel
+在数据并行训练中，一个明显的特点是每个 GPU 持有整个模型权重的副本。这就带来了冗余问题。另一种并行模式是模型并行，即模型被分割并分布在一个设备阵列上。
 
+模型并行通常有两种：
+
+- **张量并行（Tensor Parallelism）**: 也叫层内并行（intra-layer model parallel），在一个操作中实现并行计算，如矩阵-矩阵乘法。
+- **流水线并行（Pipeline Parallelism）**: 也叫层间并行（inter-layer model parallel），在各层之间依次进行并行计算。
+
+下面将详细介绍张量并行和流水线并行。
 
 ## 三、Pipeline Parallel
 
 
 ## 四、Tensor Parallel
+张量并行（Tensor Parallelism）是将矩阵乘加运算分解在N个GPU设备上，**张量可以按横向或纵向进行切分，每个切片由独立的GPU 处理**。每块GPU 对其张量切片执行计算，最终将各自结果同步合并，重建出完整的计算结果。由于每块GPU 可以并行处理自己的张量切片，张量并行在速度和效率上都有提升，并且可以与其他并行策略配合使用。
+
+**TP需要很大的卡间通信带宽，所以一般只适用于支持NVLink的单机GPU之间进行并行**。
+![](Figure/parallel/TP.png)
+
+张量并行是由Megatron-LM(Nvidia的分布式训练框架)提出，冷知识：Megatron是变形金刚（transformer）的反派主角霸天虎领袖--威震天。
+
+### 1.权重不同切分方式
+线性层(linear layer)是Transformer的架构模型训练的核心 kernel，其本质上是一种GEMM操作，我们在加载模型时，需要将权重做切分并并分发到不同的GPU设备上。随后，各GPU设备分别执行相应GEMM操作。
+
+权重切分有两种方式：**按行和按列切分**。
+
+#### Forward
+按不同方式切分权重后的线性层推理 forward 操作的可视化对比图如下图所示：
+
+![](Figure/parallel/weight_split_row_column.png)
+
+- 权重A如果按照行切分，那么GEMM的维度无法对齐，需要再把X按列切开才能做到矩阵乘法，并在对应GPU设备上分别执行GEMM得到Y1和Y2。然后再对Y1和Y2逐元素相加才能得到Y。
+- 权重A按照列拆分直接计算得到Y1和Y2，然后concat即可。
+
+#### Backward
+
+*行切分的backward计算图如下：*
+
+![](Figure/parallel/TP_hang.jpg)
+
+- **f 和 g**：分别表示两个算子，每个算子都包含一组 forward + backward 操作。
+- 图中的每一行，表示单独在一块 GPU 上计算的过程。
+- **g 的 backward**：假定现在我们要对 $W_i$ 求梯度，则可推出（L是loss函数）
+  $$
+  \frac{\partial L}{\partial W_i} = \frac{\partial L}{\partial Y} \cdot \frac{\partial Y}{\partial Y_i} \cdot \frac{\partial Y_i}{\partial W_i} = \frac{\partial L}{\partial Y} \cdot \frac{\partial Y_i}{\partial W_i}
+  $$
+  也就是说，只要把 $\frac{\partial L}{\partial Y}$ 同时广播到两块 GPU 上，两块 GPU 就可以独立计算各自权重的梯度了。
+
+  （$\frac{\partial Y}{\partial Y_i} = 1$表示局部输出 $Y_i$ 对整体输出 $Y$ 的逐元素贡献为 1。）
+- **f 的 backward**：在上图中，我们只画了模型其中一层的计算过程。当模型存在多层时，梯度要从上一层向下一层传播。比如图中，梯度要先传播到 X，然后才能往下一层继续传递。这就是 f 的 backward 的作用。这里也易推出，
+  $$
+  \frac{\partial L}{\partial X} = \text{concat}\left[\frac{\partial L}{\partial X_1}, \frac{\partial L}{\partial X_2}\right]
+  $$
+
+*列切分的backward计算图如下：*
+
+(这个图的XW1和XW2应该转一下，是竖着的长方形，不过不影响理解)
+![](Figure/parallel/TP_lie.jpg)
+
+- **g 的 backward**：易推出
+  $$
+  \frac{\partial L}{\partial W_i} = \frac{\partial L}{\partial Y_i} * \frac{\partial Y_i}{\partial W_i}
+  $$
+
+- **f 的 backward**：因为对于损失$L$，$X$既参与了$XW_1$的计算，也参与了$XW_2$的计算。因此有
+  $$
+  \frac{\partial L}{\partial X} = \left. \frac{\partial L}{\partial X} \right|_1 + \left. \frac{\partial L}{\partial X} \right|_2
+  $$
+  其中$\left. \frac{\partial L}{\partial X} \right|_i$表示第$i$块GPU上计算到$X$时的梯度。
+
+### 2.Transformer模型并行概览
+标准的 transformer 层如图所示，其由一个自注意力（self-attention）模块和一个两层的多层感知机 (MLP)组成，可在这两个模块中分别引入模型并行（也叫张量并行）技术。
+
+![](Figure/parallel/TP_transformer.png)
+
+### 3.MLP层
+MLP的计算过程如下：
+![](Figure/parallel/MLP.jpg)
+
+其中，GELU是激活函数，A和B分别为两个线性层。在Transformer里，一般设$h' = 4h$。假设现在有N块GPU，我们要把MLP层的权重拆到上面做计算，要怎么拆分呢？Megatron提供的拆分办法如下：
+
+![](Figure/parallel/MLP2.jpg)
+
+在 MLP 层中，**对 A 采用“列切割”，对 B 采用“行切割”**。
+
+- **f 的 forward 计算**：把输入 $X$ 拷贝到两块 GPU 上，每块 GPU 即可独立做 forward 计算。
+- **g 的 forward 计算**：每块 GPU 上的 forward 计算完毕，取得 $Z_1$ 和 $Z_2$ 后，GPU 间做一次 AllReduce，相加结果产生 $Z$。
+- **g 的 backward 计算**：只需要把 $\frac{\partial L}{\partial Z}$ 拷贝到两块 GPU 上，两块 GPU 就能各自独立做梯度计算。
+- **f 的 backward 计算**：当当前层的梯度计算完毕，需要传递到下一层继续做梯度计算时，我们需要求得 $\frac{\partial L}{\partial X}$。则此时两块 GPU 做一次 AllReduce，把各自的梯度 $\left. \frac{\partial L}{\partial X} \right|_1$ 和 $\left. \frac{\partial L}{\partial X} \right|_2$ 相加即可。
+
+为什么我们对 A 采用列切割，对 B 采用行切割呢？这样设计的原因是，我们尽量保证各 GPU 上的计算相互独立，减少通讯量。对 A 来说，需要做一次 GELU 的计算，而 GELU 函数是非线性的，它的性质如下：
+
+![](Figure/parallel/MLP3.jpg)
+
+也就意味着，如果对A采用行切割，我们必须在做GELU前，做一次AllReduce，这样就会产生额外通讯量。但是**如果对A采用列切割，那每块GPU就可以继续独立计算了**。一旦确认好**A做列切割，那么相应地B需要做行切割**了（仔细看，行切割之后再做列切割，其计算非常的丝滑，维度十分匹配）。
+
+#### 通讯量计算
+**MLP 层做 forward 时产生一次 AllReduce，做 backward 时产生一次 AllReduce**。附录6中讲了AllReduce 的过程分为两个阶段：Reduce-Scatter 和 All-Gather，每个阶段的通讯量都相等。现在我们设每个阶段的通讯量为$\Phi$，则一次 AllReduce 产生的通讯量为 $2\Phi$。**MLP 层的总通讯量为 $4\Phi$**。
+
+根据上面的计算图，我们也易知：
+$$
+\Phi = b * s * h
+$$
+
+
+
+
 
 ## 五、Sequence Parallel
 

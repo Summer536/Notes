@@ -244,7 +244,7 @@ C.还有就是小模型计算出来的候选序列有什么会被拒绝，那么
 
 
 ### 2. MLA
-
+请直接阅读文章[DeepSeek_MLA](https://summer536.github.io/Notes/zh/posts/Deepseek_MLA.html)
 
 ### 参考资料
 - [deepseek技术解读(1)-彻底理解MLA（Multi-Head Latent Attention）](https://zhuanlan.zhihu.com/p/16730036197)
