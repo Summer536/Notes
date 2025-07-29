@@ -135,7 +135,7 @@ ZeRO有三个阶段：
 
 权重切分有两种方式：**按行和按列切分**。
 
-#### Forward
+#### 1.1 Forward
 按不同方式切分权重后的线性层推理 forward 操作的可视化对比图如下图所示：
 
 ![](Figure/parallel/weight_split_row_column.png)
@@ -143,7 +143,7 @@ ZeRO有三个阶段：
 - 权重A如果按照行切分，那么GEMM的维度无法对齐，需要再把X按列切开才能做到矩阵乘法，并在对应GPU设备上分别执行GEMM得到Y1和Y2。然后再对Y1和Y2逐元素相加才能得到Y。
 - 权重A按照列拆分直接计算得到Y1和Y2，然后concat即可。
 
-#### Backward
+#### 1.2 Backward
 
 *行切分的backward计算图如下：*
 
@@ -213,7 +213,46 @@ $$
 \Phi = b * s * h
 $$
 
+### 4.Self-Attention层
+Self-Attention层为MHA+Linear的组合，其计算过程如下：
+![](Figure/parallel/SelfAtten.png)
 
+
+当head数量为1时，self-attention层的计算方法如下：
+![](Figure/parallel/MHA1.jpg)
+
+- seq_len, d_model 分别为本文维度说明中的 $s$ 和 $h$，也即序列长度和每个 token 的向量维度。
+- $W^Q$, $W^K$, $W^V$ 即 attention 层需要做训练的三块权重。
+
+当head数量为$n$时，下图展示了当num_heads = 2 时 attention 层的计算方法。即对每一块权重，我们都**沿着列方向（k_dim）维度切割**一刀。此时每个 head 上的 $W^Q$, $W^K$, $W^V$ 的维度都变成 $(d_model, k_dim // 2)$。每个 head 上单独做矩阵计算，最后将计算结果 concat 起来即可。整个流程如下：
+![](Figure/parallel/MHA2.jpg)
+
+可以发现，attention的多头计算简直是为张量模型并行量身定做的，因为每个头上都可以独立计算，最后再将结果concat起来。也就是说，**可以把每个头的参数放到一块GPU上**。则整个过程可以画成：
+![](Figure/parallel/MHA3.jpg)
+
+**对三个参数矩阵Q，K，V，按照“列切割”**，每个头放到一块GPU上，做并行计算。对**线性层B，按照“行切割”**。切割的方式和MLP层基本一致，其forward与backward原理也一致，这里不再赘述。
+最后，在**实际应用中，并不一定按照一个head占用一块GPU来切割权重，我们也可以一个多个head占用一块GPU**，这依然不会改变单块GPU上独立计算的目的。所以实际设计时，我们**尽量保证head总数能被GPU个数整除**。
+
+#### 通讯量计算
+**MHA 层做 forward 时产生一次 AllReduce，做 backward 时产生一次 AllReduce**。根据上面的计算图，我们也易知：
+$$
+\Phi = b * s * h
+$$
+
+MHA总通讯量为$4\Phi$。
+
+### 5.Embedding层
+
+#### 5.1 输入Embedding
+
+
+#### 5.2 输出Embedding
+
+
+
+
+
+### 6.Cross-entropy(计算损失函数)层 
 
 
 
