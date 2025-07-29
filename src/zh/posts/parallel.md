@@ -214,3 +214,17 @@ $$
 [大模型的分布式训练框架：deepspeed](https://mp.weixin.qq.com/s/kYeNjMsesfKfoZtJPRkciA)
 
 [深度学习常见AllReduce算法图解](https://zhuanlan.zhihu.com/p/469942194)
+
+[TP/SP/EP/DP通信类型分析](https://zhuanlan.zhihu.com/p/1916506341947736932)
+
+[一文解析！大模型并行计算方式DP/MP/PP/TP/SP/CP/EP](https://zhuanlan.zhihu.com/p/1898745987008291409)
+
+[llm 并行策略概述](https://www.armcvai.cn/2023-06-16/llm-parall.html)
+
+[张量并行技术详解](https://www.armcvai.cn/2025-04-10/tensor-parallelism.html)
+
+[图解大模型训练之：流水线并行（Pipeline Parallelism），以Gpipe为例](https://zhuanlan.zhihu.com/p/613196255)
+
+[图解大模型训练之：张量模型并行(TP)，Megatron-LM](https://zhuanlan.zhihu.com/p/622212228)
+
+
