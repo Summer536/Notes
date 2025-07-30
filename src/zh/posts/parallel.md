@@ -242,24 +242,91 @@ $$
 MHA总通讯量为$4\Phi$。
 
 ### 5.Embedding层
+Embedding层一般由两个部分组成：
+
+- word embedding：维度(v, h)，其中v表示词表大小。
+- positional embedding：维度(max_s, h)，其中max_s表示模型允许的最大序列长度。
+
+对positional embedding来说，max_s本身不会太长，因此每个GPU上都拷贝一份，对显存的压力也不会太大。但是对word embedding来说，词表的大小就很客观了，因此**需要把word embedding拆分到各个GPU上**，具体的做法如下：
 
 #### 5.1 输入Embedding
+![](Figure/parallel/embedding1.jpg)
 
+对于输入X，过word embedding的过程，就是等于用token的序号去word embedding中查找对应词向量的过程。例如，输入数据为[0, 212, 7, 9]，数据中的每一个元素代表词序号，我们要做的就是去word embedding中的0，212，7，9行去把相应的词向量找出来。
+
+
+假设词表中有300个词，现在我们将word embedding拆分到两块GPU上，第一块GPU维护词表[0, 150)，第二块GPU维护词表[150, 299)。当**输入X去GPU上查找时，能找到的词，就正常返回词向量，找到不到就把词向量中的全部全素都置0**。按此方式查找完毕后，**每块GPU上的数据做一次AllReduce，就能得到最终的输入**。
+例如例子中，第一块GPU的查找结果为[ok, 0, ok, ok]，第二块为[0, ok, 0, 0]，两个向量一相加，变为[ok, ok, ok, ok]
 
 #### 5.2 输出Embedding
+![](Figure/parallel/embedding2.jpg)
+
+需要注意的是，我们**必须时刻保证输入层和输出层共用一套word embedding**。而在backward的过程中，我们在输出层时会对word embedding计算一次梯度，在输入层中还会对word embedding计算一次梯度。在用梯度做word embedding权重更新时，我们**必须保证用两次梯度的总和进行更新**。
 
 
+当模型的输入层到输入层都在一块GPU上时（即流水线并行深度=1），我们不必担心这点（实践中大部分用Megatron做并行的项目也是这么做的）。但若模型输入层和输出层在不同的GPU上时，我们就要保证在权重更新前，两块GPU上的word embedding梯度做了一次AllReduce。
+
+### 6.Cross-entropy(计算交叉熵损失函数)层 
+输出层过完embedding后的样子：
+
+![](Figure/parallel/cross1.jpg)
+
+正常来说，我们需要对Y1和Y2做一次All-Gather，把它们concat起来形成Y，然后对Y的每一行做softmax，就可得到对于当前位置来说，每个词出现的概率。接着，再用此概率和真值组做cross-entropy即可。
+但是All-Gather会产生额外的通讯量$b*s*v$。当词表v很大时，这个通讯开销也不容忽视。针对这种情况，可以做如下优化：
+
+![](Figure/parallel/cross2.jpg)
+
+- 每块 GPU 上，我们可以先按行求和，得到各自 GPU 上的 `GPU_sum(e)`。
+- 将每块 GPU 上的结果做 AllReduce，得到每行最终的 `sum(e)`，也就是 softmax 中的分母。此时的通讯量为 $b * s$。
+- 在每块 GPU 上，即可计算各自维护部分的 $e / \text{sum}(e)$，将其与真值做 cross-entropy，得到每行的 loss，按行加总起来以后得到 GPU 上的 scalar Loss。
+- 将 GPU 上的 scalar Loss 做 AllReduce，得到总 Loss。此时通讯量为 $N$。
+
+这样，我们把原先的通讯量从 $b * s * v$ 大大降至 $b * s + N$。
+
+## 五、TP+DP混合并行
+在实际应用中，对Transformer类的模型，采用**最经典方法是张量模型并行 + 数据并行，并在数据并行中引入ZeRO做显存优化**。
+
+![](Figure/parallel/TPDP.jpg)
+
+其中，node表示一台机器，一般我们在**同一台机器的GPU间做张量模型并行**。在**不同的机器上做数据并行**。图中颜色相同的部分，为一个数据并行组。凭直觉，我们可以知道这么设计大概率和两种并行方式的通讯量有关。具体来说，**它与TP和DP模式下每一层的通讯量有关，也与TP和DP的backward计算方式有关**。我们分别来看这两点。
+
+### 1.TP和DP的通讯量
+首先，我们来分析两者的通讯量。我们关注 Transformer 中每一层的通讯情况。
+
+在张量模型并行中，我们设每次通讯量为 $\Phi_{TP}$，从上面分析中我们知道每层做 4 次 AllReduce，其通讯总量为 $8\Phi_{TP}$。其中，$\Phi_{TP} = b * s * h$，则通讯总量为 $8 * b * s * h$。
+
+在数据并行中，设每次通讯量为 $\Phi_{DP}$，从先前的文章中，我们知道每层做 1 次 AllReduce（先不考虑 ZeRO 拆分权重的情况），其通讯总量为 $2\Phi_{DP}$。其中，通讯的主要部分是梯度，则 $\Phi_{DP} = h * h$，总通讯量为 $2 * h * h$。
+
+因此，我们要比较的就是 $8 * b * s * h$ 和 $2 * h * h$。忽略常数和共同项，我们最终比较的是：
+$$
+[b * s] VS [h]
+$$
+
+在实际应用中，**前者可能会比后者大一些**，但量级基本在 $10^5$ 左右。因此，从通讯量上来说，有差异但不会显著（主要还是和模型设计相关）。不过按照常理，**通讯量大的，尽量放在一台机器里（机器内的带宽大，通讯时间也会小）。通讯量相对小的，可以考虑在不同机器间做并行**。
+
+### 2.TP和DP的backward计算方式
+TP在从上一层往下一层做backward的过程中，所有GPU间需要做一次AllReduce的。例如下图：
+
+![](Figure/parallel/TPDP2.jpg)
+
+而对DP来说，本层算完梯度以后，就正常把本层的梯度发出去，和属于一个DP组的GPU做AllReduce，同时继续往下一层做backward。下一层也是同理。也就是**在DP组中，下一层不依赖上一层的梯度聚合结果**。因此**在DP组中对带宽的要求就没那么高了**。所以可以放到机器间做DP。例如下图：
+
+![](Figure/parallel/TPDP3.jpg)
+
+### 3.实验效果
+Nvidia的Megatron-LM中，提供了TP+DP混合并行的实现。我们来看一下实验效果。
+![](Figure/parallel/TPDP4.jpg)
+
+其中，蓝色表示TP并行每张卡的计算效率。因为涉及卡间的通信，所以GPU的计算效率略有下降。从蓝色柱状图可以看出，随着模型的增大，需要的GPU数量变多，**通讯量增大，单卡的计算效率是在下降的**。
+
+从1卡增加到8卡，我们可以发现需要的GPU数量和模型大小是成正比的。例如当参数量从1.2B增加到8.3B时，需要的GPU数量也对应增加8倍。在这篇论文里，最大只做到了8卡。**可是一台机器明明有16张卡，为啥不能再做到一个16B左右的模型呢**？回想上一篇ZeRO部分对显存消耗的分析，**当模型增大时，不仅是参数变多，还有例如activation这样的中间结果，也在占据大头显存。因此需要的GPU数量渐渐不再和模型大小成正比了**。如果不引入显存优化，一台机器装不下16B的模型。
+
+绿色部分表示TP+DP混合并行，**在引入数据并行的前提下（跨机器），绿色的单卡效率并没有下降很多**。这个原因我们在2中解释过：因为DP组内做backward计算梯度时，下一层的计算不需要依赖上一层的梯度AllReduce结果。你算你的，我发我的，对计算通讯比不会产生太大影响。
+
+## 六、Sequence Parallel
 
 
-
-### 6.Cross-entropy(计算损失函数)层 
-
-
-
-## 五、Sequence Parallel
-
-
-## 六、Expert Parallel
+## 七、Expert Parallel
 
 
 
