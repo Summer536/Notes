@@ -279,8 +279,8 @@ $$
 $$
 
 ### 4.Self-Attention层
-Self-Attention层为MHA+Linear的组合，其计算过程如下：
-![](Figure/parallel/SelfAtten.png)
+Self-Attention层为MHA+Linear的组合，其计算过程如下（左边TP的框中）：
+![](Figure/parallel/TP_attention.jpg)
 
 
 当head数量为1时，self-attention层的计算方法如下：
@@ -389,7 +389,96 @@ Nvidia的Megatron-LM中，提供了TP+DP混合并行的实现。我们来看一�
 绿色部分表示TP+DP混合并行，**在引入数据并行的前提下（跨机器），绿色的单卡效率并没有下降很多**。这个原因我们在2中解释过：因为DP组内做backward计算梯度时，下一层的计算不需要依赖上一层的梯度AllReduce结果。你算你的，我发我的，对计算通讯比不会产生太大影响。
 
 ## 六、Sequence Parallel
+这部分内容，我还没有时间整理，先留个坑。详细文章见大佬猿姐的知乎
+- [图解大模型训练系列：序列并行1，Megatron SP](https://zhuanlan.zhihu.com/p/4083427292)
+- [图解大模型训练系列：序列并行4，Megatron Context Parallel](https://zhuanlan.zhihu.com/p/5502876106)
 
+简单做个总结
+### 1.Megatron SP
+本质是想通过降低单卡激活值大小的方式，尽可能多保存激活值，少做重计算，以此提升整体训练速度，一般和它家的tp配套使用。
+
+**Background**
+
+先来回顾一下，威震天的TP并行策略如下图（对Attention部分和MLP部分做了权重切分）
+![](Figure/parallel/SP1.png)
+
+我们知道，GPU 的显存大小是模型训练的瓶颈之一。**模型权重、梯度、优化器和激活值等都会占用显存**。其中，当我们在 bwd 的过程中使用链式法则层层向下计算梯度时，激活值（activation）就成为了传导的中间媒介（例如图中，X、Y1、Z1 等就属于激活值）。由于激活值对显存的占据也是显著的，因此，我们有必要对激活值的存储做优化。
+
+![](Figure/parallel/MLP2.jpg)
+
+在以往的做法中，为了降低激活值占据的显存，我们会采用重计算（recomputation）技术
+
+- 在 fwd 的过程中，我们算出了 Y1。这时为了节省显存，我们选择不保存 Y1。
+- 在 bwd 的过程中，当梯度计算传导到 Y1 时，我们重新做 fwd 过程，把 Y1 算出来，然后再做 bwd。
+- 采用重计算方法，我们可以避免那些暂时用不到的激活值长久地占据着显存，导致其他计算过程因为申请不到充足的存储资源而陷入等待。
+- 但是重计算也增加了模型的计算时长（多做了 fwd），从而影响了模型的吞吐。
+
+所以，我们自然而然想到：**如果不采用重计算**，依然让暂时用不到的激活值保存在 GPU 上，但是我却能通过某种办法，**降低每张 GPU 上保存的激活值大小**，这样不就能避免额外做 fwd 了吗？回归到我们的张量并行上，此时模型权重已经被切开放到各块卡上，那么我们也想个办法，**把激活值也切开放到各块卡上，不就行了吗？**是的，Megatron SP就是这么做的。
+
+**Megatron SP**
+
+megatron sp的核心思想是借鉴tp把模型权重切分到多卡上的方式，把激活值也切分到各张卡上。相比于tp，tp+sp保持了原始tp并行模块不变，只是**针对Attn和MLP的输入/输出部分做了sp（序列并行处理）**。
+
+![](Figure/parallel/SP2.png)
+
+猿姐文章中对tp下维护的激活值大小以及tp+sp下维护的激活值大小以及通讯量做了详细计算和对比，这里直接给出结论：
+- **不做任何并行处理时**，单卡上 attn+mlp 层的激活值大小为：
+  $sbh(34 + 5\frac{as}{h})$
+
+- 假设有 $t$ 块卡，**纯 tp 处理时**，单卡上 attn+mlp 层的激活值大小为：
+  $sbh(10 + \frac{24}{t} + 5\frac{as}{ht})$
+  这里唯一没有被 $t$ 除的 10 表示 attn 和 mlp 中和 layernorm 输入、输出以及最后一个 dropout mask 相关的部分。这一部分也是 sp 关注的优化点。
+
+- 假设有 $t$ 块卡，**做 tp+sp 处理时**，单卡上 attn+mlp 层的激活值大小为：
+  $sbh(\frac{34}{t} + 5\frac{as}{ht})$，通讯量和纯tp时一致。
+
+**Selective Activation Recomputation**
+
+通过SP可为单卡尽量腾出显存空间，并可以存下所有的激活值。如此一来在bwd的过程中就不需要做重计算了，可以加快bwd的过程，提升模型整体的训练速度。
+
+即使用了sp+tp，我们的**显存可能也存不下全部的激活值**。同时，由于我们总是**可以边算边通讯**，因此可能**没有必要一下子把全部的激活值都保存下来**，例如通过一些优化，让模型还在上一层做通讯时，下一层就开始重计算（这里的层不是指模型的layer，是指bwd的时间轴，这里只是大概举个例子）。因此一种折衷的办法是：在使用tp+sp的前提下，**只保留部分激活值，另一部分留做重计算**。那什么样的激活值是我们不想保留的呢？自然是那些占显存大，但是本身计算量不大的激活值（例如Attention score相关的计算，softmax这种操作比起矩阵乘法来说就更快）。megatron管这种办法叫selective activation recomputation（选择性重计算）。
+
+![](Figure/parallel/SP3.jpg)
+
+经过实验发现，tp+sp+选择性重计算这种方案的整体表现最好
+
+### 2.Megatron Context Parallel
+
+Megatron cp可以看成是在**保持megatron sp混合并行框架的基础上，引入cp维度的并行**。而cp并行的本质其实是做attention部分的优化。所以可以把megatron **sp混合并行理解成整体框架，cp理解成局部优化**。
+
+Megatron cp在实践上和朴素的ring attention非常相似，但是它做了计算上的负载均衡处理。
+
+**Ring Attention**
+
+一个朴素ring attention的运作流程：
+
+- 每张卡上固定维护着某个seq_chunk的Q
+- 每张卡上轮转不同seq_chunk的KV值
+- 每张卡上，Q和当前轮转到的(K, V)数据做attention计算，然后通过类似Flash Attention V2的方式更新output
+- 当所有的KV值轮转完毕后，每张卡上就得到了最终的output。
+
+![](Figure/parallel/CP1.jpg)
+
+这个朴素的ring attention有个问题：**计算负载不均衡**。
+- 对于gpu0，它维护着Q0，这也意味着后面流转过来的(K1, V1)(K2, V2)(K3, V3)都是位于它之后的tokens产出的结果，它根本不需要和它们做attn，这时gpu0的计算就被浪费了。（这是Transformer的Mask机制）
+- 对于其余gpu也是同理。只有维护着最后一块Q分块的gpu3能在每次流转中都做好计算，没有浪费计算资源。
+
+**Megatron CP**
+
+Megatron CP对ring attention的负载均衡做了优化，它采用分块的思路，具体如下图所示:
+![](Figure/parallel/CP3.jpg)
+
+假设cp_size = 4，也就是我们打算在4块gpu上做ring attention。
+
+- 首先，对于原始输入数据X，我们将其切分为2*cp_size = 8块，也就是上图的0～7 chunk
+- [0,7]，[1, 6]，[2, 5], [3, 4]分别组成4个seq_chunk，安放在gpu0~gpu3上。
+- 则在ring attention下，每块gpu上计算cp_size次后，就能得到最终的output。例如对于gpu0，计算4次后，就能得到[0, 7]这两个位置最终的attention结果。
+- 图中接着展示了在不同的iteration中，每块卡上的计算情况，可以发现：
+i = 0时，每张卡上都是4个小方块在做attn计算
+i = 1/2/3时，每张卡上都是3个小方块在做attn计算
+总结来看，**每个iteration中，各卡的计算量是相同的。不存在朴素ring attention上某些卡空转的情况**。
+
+Megatron CP还使用cuda stream对计算和通讯做了优化，这里先留个坑，之后再补吧......
 
 ## 七、Expert Parallel
 
