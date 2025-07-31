@@ -481,7 +481,7 @@ i = 1/2/3时，每张卡上都是3个小方块在做attn计算
 Megatron CP还使用cuda stream对计算和通讯做了优化，这里先留个坑，之后再补吧......
 
 ## 七、Expert Parallel
-
+专家并行(EP)是针对MoE的并行方式（[点击此处详细了解MoE架构](https://summer536.github.io/Notes/zh/posts/MoE.html)），它将每个expert切分到不同的gpu上，然后通过AllGather和AllReduce等通信算子，将每个expert的输出结果聚合到一起。
 
 
 
@@ -586,5 +586,12 @@ $$
 [图解大模型训练之：流水线并行（Pipeline Parallelism），以Gpipe为例](https://zhuanlan.zhihu.com/p/613196255)
 
 [图解大模型训练之：张量模型并行(TP)，Megatron-LM](https://zhuanlan.zhihu.com/p/622212228)
+
+[图解大模型训练系列：序列并行1，Megatron SP](https://zhuanlan.zhihu.com/p/4083427292)
+
+[图解大模型训练系列：序列并行4，Megatron Context Parallel](https://zhuanlan.zhihu.com/p/5502876106)
+
+[图解大模型训练系列之：DeepSpeed-Megatron MoE并行训练（原理篇）](https://zhuanlan.zhihu.com/p/681154742)
+
 
 
