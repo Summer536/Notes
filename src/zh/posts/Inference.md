@@ -53,10 +53,9 @@ Decode 阶段 是从第一个预测 token 开始，逐步生成后续 token 的�
 ## 二. 阶跃星辰step3 AF分离推理系统 vs. deepseek EP推理系统
 
 [赏析阶跃星辰step3 AF分离推理系统 vs. deepseek EP推理系统](https://mp.weixin.qq.com/s/CI_QZkmvh4mJh4PtXg__pw)
+Deepseek v3提出的EP推理系统的致命局限性：**必须要足够大的batchsize，使得输入内容可以打满Expert专家，让专家尽量做到负载均衡。（如果做不到，整体系统很容易会被负载过大的专家的那张card所拖垮）**
 
-
-
-
+Step3的AF要细读一下（1day）
 
 ## 三. 介绍一下batch、batch size、以及动态批(dynamic batching)处理技术？
 
