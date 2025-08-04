@@ -50,8 +50,15 @@ Decode 阶段 是从第一个预测 token 开始，逐步生成后续 token 的�
 
 **vLLM、TensorRT-LLM、DeepSpeed、HuggingFace Transformers** 等 框架都会显式地将推理划分为 prefill 和 decode 阶段，以提升效率。
 
+## 二. 阶跃星辰step3 AF分离推理系统 vs. deepseek EP推理系统
 
-## 二. 介绍一下batch、batch size、以及动态批(dynamic batching)处理技术？
+[赏析阶跃星辰step3 AF分离推理系统 vs. deepseek EP推理系统](https://mp.weixin.qq.com/s/CI_QZkmvh4mJh4PtXg__pw)
+
+
+
+
+
+## 三. 介绍一下batch、batch size、以及动态批(dynamic batching)处理技术？
 
 ### 1. 什么是batch？
 在传统的深度学习推理中，比如图像分类任务：所有请求先被收集起来达到固定 batch size后统一处理，处理完这个 batch 后再处理下一个。这个收集起来的任务就叫做一个batch。
@@ -95,7 +102,7 @@ Padding 带来的问题：
 
 上图显示了通过连续批处理技术连续完成 7 个序列的推理情况。左图显示了第一次迭代后的批次，右图显示了几次迭代后的批次。每当一个序列发出终止 token 时，我们会将一个新的序列插入其位置（例如序列 S5、S6 和 S7），这样 GPU 无需等待所有序列完成即可开始处理新的序列，从而实现更高的 GPU 利用率。
 
-## 三. 推理引擎一般都可以设置哪些参数(以vLLM为例)？
+## 四. 推理引擎一般都可以设置哪些参数(以vLLM为例)？
 
 ✅ 1. --host 和 --port
 作用：指定 HTTP 服务监听的地址和端口
@@ -166,10 +173,10 @@ Padding 带来的问题：
 --max-output-length 1024
 ```
 
-## 四. 如何针对不同推理场景（单人、多用户、单卡、多卡）设置相应的参数最大化利用GPU性能？
+## 五. 如何针对不同推理场景（单人、多用户、单卡、多卡）设置相应的参数最大化利用GPU性能？
 待更新
 
-## 五. 介绍一下投机推理（Speculative Decoding）？
+## 六. 介绍一下投机推理（Speculative Decoding）？
 投机采样是一种可以从根本上解码计算访存比的方法，保证和使用原始模型的采样分布完全相同。**它使用两个模型：一个是原始目标模型，另一个是比原始模型小得多的近似模型。近似模型用于进行自回归串行采样，而大型模型则用于评估采样结果**。解码过程中，某些token的解码相对容易，某些token的解码则很困难。因此，简单的token生成可以交给小型模型处理，而困难的token则交给大型模型处理。这里的小型模型可以采用与原始模型相同的结构，但参数更少，或者干脆使用n-gram模型。小型模型不仅计算量较小，更重要的是减少了内存访问的需求。
 
 ### 投机采样过程如下：
@@ -217,7 +224,7 @@ C.还有就是小模型计算出来的候选序列有什么会被拒绝，那么
 2. [Fast Inference from Transformers via Speculative Decoding](https://proceedings.mlr.press/v202/leviathan23a/leviathan23a.pdf)
 
 
-## 六. 介绍一下Deppseek的MLA（针对Hopper架构的优化），Hopper架构还引入了不同block得thread之间的共享内存机制？
+## 七. 介绍一下Deppseek的MLA（针对Hopper架构的优化），Hopper架构还引入了不同block得thread之间的共享内存机制？
 ### 1. 什么是低秩压缩？
 低秩压缩是一种**利用矩阵的低秩近似特性来显著减少数据存储量或模型参数量的技术**。它的核心思想基于线性代数中的一个重要概念：矩阵的秩。
 
@@ -247,6 +254,7 @@ C.还有就是小模型计算出来的候选序列有什么会被拒绝，那么
 请直接阅读文章[DeepSeek_MLA](https://summer536.github.io/Notes/zh/posts/Deepseek_MLA.html)
 
 ### 参考资料
+- [赏析阶跃星辰step3 AF分离推理系统 vs. deepseek EP推理系统](https://mp.weixin.qq.com/s/CI_QZkmvh4mJh4PtXg__pw)
 - [deepseek技术解读(1)-彻底理解MLA（Multi-Head Latent Attention）](https://zhuanlan.zhihu.com/p/16730036197)
 - [缓存与效果的极限拉扯：从MHA、MQA、GQA到MLA](https://spaces.ac.cn/archives/10091)
 - [MLA原理介绍（极简版）](https://zhuanlan.zhihu.com/p/21366443341)
