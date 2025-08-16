@@ -305,8 +305,8 @@ d*e   = 2000
 param = 300
 ```
 
-### 12. 模版函数有哪些编译方式？以下模板代码编译能否通过？怎么样修改让它通过？
-一体化编译会增加编译时间，分离式编译会多次重复显式实例化，且多个cpp可能实例化同一模板造成维护困难，后者可能造成可执行文件膨胀。
+### 12. 模版函数有哪些编译方式？哪个更好？
+一体化编译会增加编译时间，分离式编译会多次重复显式实例化，且多个cpp可能实例化同一模板造成维护困难，后者可能造成可执行文件膨胀。**一般推荐一体化编译**
 
 1. **一体化编译** ：模板类或函数的 声明 + 定义都放在头文件。调用时**编译器能直接看到完整定义，从而实例化**。最常见的方式，C++STL、NV的cutlass 等很多组件都是这样。
 ```cpp
@@ -335,7 +335,108 @@ template int add<int>(int, int);
 template double add<double>(double, double);
 ```
 
+### 13. 模板实例化、特例化、偏特化的概念？
+1. 模板实例化：编译器在看到具体类型时，根据模板生成对应的具体函数或类。
+```cpp
+// 函数模板
+template <typename T>
+T add(T a, T b) { return a + b; }
 
+int main() {
+    add(1, 2);       // 隐式实例化 -> 生成 add<int>(int, int)
+    add(1.1, 2.2);   // 隐式实例化 -> 生成 add<double>(double, double)
+
+    // 显式实例化
+    template int add<int>(int, int);
+}
+
+```
+2. 模板特例化：为某个特定类型提供完全不同的实现，覆盖原有的通用模板。
+```cpp
+// 通用模板
+template <typename T>
+class Printer {
+public:
+    void print(T val) { std::cout << val << std::endl; }
+};
+
+// 特例化：char* 的打印方式不同
+template <>
+class Printer<char*> {
+public:
+    void print(char* val) { std::cout << "C-string: " << val << std::endl; }
+};
+```
+3. 模板偏特化：不是针对某一个完全确定的类型，而是针对 一类类型模式 提供特殊实现。
+
+**部分参数特化**（个数上的偏特化）
+```cpp
+#include <iostream>
+
+// 原始的模板定义
+template <typename T1, typename T2>
+class MyTemplate {
+public:
+    void print() {
+        std::cout << "General template" << std::endl;
+    }
+};
+
+// 部分参数偏特化，对第二个参数特化为 int 类型
+template <typename T1>
+class MyTemplate<T1, int> {
+public:
+    void print() {
+        std::cout << "Partial specialization with T2 = int" << std::endl;
+    }
+};
+
+int main() {
+    MyTemplate<double, char> obj1;
+    obj1.print(); // 调用通用模板的 print 函数
+
+    MyTemplate<double, int> obj2;
+    obj2.print(); // 调用部分特化模板的 print 函数
+
+    return 0;
+}
+```
+
+**参数范围的偏特化**（范围上的偏特化）
+```cpp
+#include <iostream>
+
+// 原始的模板定义
+template <typename T>
+class MyTemplate {
+public:
+    void print() {
+        std::cout << "General template" << std::endl;
+    }
+};
+
+// 类型范围偏特化，对指针类型进行特化
+template <typename T>
+class MyTemplate<T*> {
+public:
+    void print() {
+        std::cout << "Partial specialization for pointer types" << std::endl;
+    }
+};
+
+int main() {
+    MyTemplate<int> obj1;
+    obj1.print(); // 调用通用模板的 print 函数
+
+    int num = 10;
+    MyTemplate<int*> obj2(&num);
+    obj2.print(); // 调用指针类型偏特化模板的 print 函数
+
+    return 0;
+}
+```
+
+### 14. 模板特例化、偏特化的区别？
 
 
 
