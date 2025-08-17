@@ -89,6 +89,8 @@ int main() {
 3. **友元函数**：友元函数不是类的成员函数，它只是被授予了访问类的私有成员的权限；
 4. **内联函数**：同静态一样，内联函数在编译器阶段已经确定；
 
+扩展：**虚函数和纯虚函数的区别**：虚函数是基类中用 virtual 修饰的函数，可以有函数体，子类可以选择是否重写override。**纯虚函数**是用 =0 定义的虚函数，没有函数体，**要求子类必须override实现**。
+
 ### 5. unique_ptr、shared_ptr、auto_ptr的区别？
 1. unique_ptr：不支持拷贝，只支持指针所有权的转移；
 2. shared_ptr：支持拷贝，内部有引用计数，最后一个 shared_ptr 析构时才释放资源；
@@ -436,14 +438,92 @@ int main() {
 }
 ```
 
-### 14. 模板特例化、偏特化的区别？
+### 14. 使用模版来实现一个斐波那契数列（看看就好）
+这个是个模版元函数的典型例子，利用了模版的递归性
+```cpp
+#include <iostream>
+using namespace std;
 
+// 1.使用static确保生成的value是属于整个类Fibonacci，而非某个对象，因此该类的所有成员可以直接访问无需每个对象都初始化这个变量
+// 2.使用constexpr， 最终结果 55 在编译期就能算出来，运行时只是打印
+template<int N>
+struct Fibonacci {
+    static constexpr int value = Fibonacci<N - 1>::value + Fibonacci<N - 2>::value;
+};
 
+template<>
+struct Fibonacci<1> {
+    static constexpr int value = 1;
+};
 
+template<>
+struct Fibonacci<0> {
+    static constexpr int value = 0;
+};
 
+int main() {
+    const int result = Fibonacci<10>::value;
+    cout << result << endl;
+    return 0;
+}
+```
 
+### 15.以下代码会调用哪些函数？讲讲C++的右值有哪些？
+右值有两种类型，纯右值和将亡值。
+1. **纯右值**：字面值（例：0、1、2），表达式（例：），返回的对象
+2. **将亡值**：std::move(a), static_cast<A&&>(a)
+```cpp
+class BigObj {
+public:
+    explicit BigObj(size_t length)
+        : length_(length), data_(new int[length]) {
+    }
 
-；前者可能出现，多次重复显式实例化，且多个cpp可能实例化同一模板造成维护困难，后者可能造成可执行文件膨胀
+    // 析构
+    ~BigObj() {
+     if (data_ != NULL) {
+       delete[] data_;
+        length_ = 0;
+     }
+    }
+
+    // 拷贝构造函数
+    BigObj(const BigObj& other) = default;
+
+    // 赋值运算符
+    BigObj& operator=(const BigObj& other) = default;
+
+    // 移动构造函数
+    BigObj(BigObj&& other) : data_(nullptr), length_(0) {
+        data_ = other.data_;
+        length_ = other.length_;
+        //移动构造函数后，没有将原对象回复默认值
+    }
+    
+    BigObj operator=(BigObj&& other) {
+        
+    }
+
+private:
+    size_t length_;
+    int* data_;
+};
+
+BigObj func(int a, int b){
+}//RVO
+
+int main() {
+   BigObj obj(1000); //构造函数
+   BigObj o; //构造函数
+
+   {
+    o = std::move(obj); //移动赋值（因为o已经被创建了，因此这里不是拷贝构造函数）
+   }//析构o对象
+   //{}表示一个作用域，离开这个作用域o马上就会被析构
+
+   return 0;//析构ocj对象
+}
+```
 
 
 
