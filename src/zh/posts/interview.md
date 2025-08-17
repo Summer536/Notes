@@ -581,15 +581,140 @@ int main() {
 | BF16  | 16     | **1**      | **8**      | **7**      | 127      | ~±3.4e38 | AI训练、兼顾范围和效率 |
 
 
+### 19. FP16与BF16的对比？
+BF16更适合training，因为指数位宽，动态范围大，**减少梯度爆炸和梯度消失**，更有利于backward；
 
+FP16更适合推理，推理只有forward，不涉及backward，因此不考虑梯度问题，只考虑精度即可。FP16**尾数位多，对精度更友好**
 
+### 20. 写出代码计算1+(1/2)+(1/3)+(1/4)+...+(1/n)
+[flaot 数据类型的一些坑（大数吃小数）](https://blog.csdn.net/xieyihua1994/article/details/106137932)
 
+重点提取：
 
+1. 在浮点数计算前，会先将其转为二级制的科学计数。ep.(-1)^sign * 1.f * 2^e
+2. 浮点数加法需要先对齐指数位再相加, ep.0.5+0.125 = (-1)^0 * **1.0** * 2^(-1) + (-1)^0 * **0.01** * 2^(-1) = (-1)^0 * **1.01** * 2^(-1) 
+3. 大数加小数时，为了对齐指数位，需要左移动1.f的小数点，当移动超过23位时，小数变成了0（例如：(-1)^0 * **0.0** * 2^(-1)），就意味着+的这个数就是0。此时会出现**大数吃小数**的情况（例如：16777216 + 1 = 16777216）
 
+**注意，这种情况只出现在浮点数运算中，整数运算不会出现**
 
+```cpp
+#include <iostream>
+using namespace std;
+
+int main(){
+    long i, n; //int表示32位的整数，long 表示更大位的整数，long long会保证至少64位的整数
+    double sum;
+    cin >> n;
+    
+    sum = 0.0;
+    for(i = n; i >= 1; --i){ //这里for采用--i而不是++i就是为了防止大数吃小数的情况发生
+        sum += 1.0/i; //这里必须是1.0，不能是1，因为这是浮点数除法不是整数除法
+    }
+    cout << sum << endl;
+    return 0;
+}
+```
+### 21. INT8和FP8在IEEE754标准下的区别？
+
+| 类型  | 总位数 | 符号位 | 指数位 | 尾数位 | 典型应用场景 |
+|-------|--------|--------|--------|--------|--------------|
+| INT8  | 8      | 1      | 0      | 7      | 量化推理、存储节省、嵌入式计算 |
+| FP8   | 8      | 1      | 4 或 5 | 3 或 2 | AI 推理加速、低精度训练（Edge TPU / GPU TensorCore） |
+
+### 22. INT8和FP8的优劣势对比
+1. 二者都是为模型量化而生，fp8相对于int8在精度上面不具有理论优势，因为**int8为均匀数据类型**，在值域内都是均匀的，数和数之间间隔为1，但**fp8不是均匀数据类型**，数与数之间间隔不定，但是个数一定为3个，这也导致了在数**值小的范围里面，fp8的精度优于int8，但是在数值偏大的范围里面，int8精度优于fp8**。
+
+2. **fp8可以用来做模型训练**（例如Deepseek就使用fp8精度做的训练），并且fp8训练的模型可以**直接使用fp8进行推理**。**Int8不能用作推理**因为值域里面全是整数，没法求导，从而没法计算梯度。
+
+3. fp8量化理论上相对int8不需要校准(calibration)，直接设置input scale和output scale为1即可量化，（注意：实际上多数fp8量化项目还是做了calibration），int8需要calibration
+
+### 23. Attention包含哪些算子？使用pytorch搭建一下。
+```python
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class SimpleAttention(nn.Module):
+    ## d_model表示hidden size, d_head表示head num
+    ## 单头注意力：hiddensize = head num;
+    ## 多头注意力：hiddensize = head num * headsize;
+    def __init__(self, d_model, d_head):
+        super().__init__()
+        self.d_head = d_head
+        self.W_q = nn.Linear(d_model, d_head) ##将输入的hiddensize维度转为headnum维度，进行Attention计算
+        self.W_k = nn.Linear(d_model, d_head) ##nn.Linear(输入维度, 输出维度, bias=True默认)
+        self.W_v = nn.Linear(d_model, d_head)
+        self.W_o = nn.Linear(d_head, d_model) ##Attention计算后的结果（维度为 d_head）映射回原始模型维度 d_model
+
+    def forward(self, x):
+        """
+        x:    [bs, seq_len, d_model]
+        mask: [seq_len, seq_len] 注意力分数是一个 seq*seq 的矩阵，因此掩码矩阵要和它shape一致
+        """
+        bs, seq_len, _ = x.shape
+
+        ## QKV linear
+        Q = self.W_q(x)  #[bs, seq_len, d_model] -> [bs, seq_len, d_head]
+        K = self.W_k(x)  #[bs, seq_len, d_model] -> [bs, seq_len, d_head]
+        V = self.W_v(x)  #[bs, seq_len, d_model] -> [bs, seq_len, d_head]
+
+        ## RoPE
+        Q, K = apply_rope(Q, K, cos, sin)
+
+        ## Q*(K^T) / sqrt(d_head)
+        attn_socres = torch.matmul(Q, K.transpose(-2, -1)) / (self.d_head ** 0.5) #[bs, seq_len, seq_len]
+            # -2 -1表示K的倒数第一和第二维度也就是[seq_len, d_head],transpose为[d_head, seq_len]
+
+        ## Mask
+        if mask is not None:
+            attn_socres = attn_socres.masked_fill(causal_mask == 0, float('-inf'))  #[bs, seq_len, seq_len]
+            # causal_mask矩阵shape与attn_socres一样，需要掩码的地方值为0，不需要的地方值为1
+            # masked_fill函数是将attn_socres矩阵中和causal_mask矩阵为0的位置相同的位置 将其值置为-inf
+            # softmax会将-inf的值的概率算为0（这也是为什么Mask要放在Softmax前面的原因）
+        
+        ## Softmax
+        attn_weights = torch.softmax(attn_socres, dim=-1) #[bs, seq_len, seq_len]
+            # dim=-1表示对最后一个维度进行softmax，每一行（比如第 i 行）表示：第i个token对所有其他token的原始注意力分数
+            # 所以要在每行内部做 softmax —— 也就是在最后一个维度（列方向）上操作。
+
+        ## O = attn_weights * K
+        output = torch.matmul(attn_weights, V) #[bs, seq_len, d_head]
+        output = self.W_o(output) #[bs, seq_len, d_model]
+
+        return output
+
+# ======================
+# 使用示例
+# ======================
+if __name__ == "__main__":
+    d_model = 128
+    d_head = 64
+    seq_len = 8
+    bs = 2
+
+    model = SimpleAttention(d_model, d_head)
+    x = torch.rand(bs, seq_len, d_model)
+
+    out = model(x)
+    print("输入形状:", x.shape)
+    print("输出形状:", out.shape)
+
+```
 
 
 ## 四. X86CPU体系结构
+
+### 24. CPU上有哪些并行策略？
+
+
+
+
+
+
+
+
+
+
 
 ## 五. GPU体系结构与cuda编程
 
