@@ -821,11 +821,77 @@ GPU：（以A100为例）
 4. 如果不用compiler，自己手动排布流水线，那么这个排布的难度也是极大的。
 
 
-
 ## 五. GPU体系结构与CUDA编程
+
+### 33. 给一个CUDA kernel如何分配block和thread数？如何取到最优的block和thread数？
+![](Figure/Interview/33.png)
+
+最优的block数量和thread数量很难一次性确定，一般需要借助Nsight compute来分析occupancy
+
+以下是一些实战经验：
+
+可以**先根据数据的shape将block和thread数分配到一个好写代码的程度**，例如数据是[1024*1024]，那我就可以分配1024个block处理1024行，256/512/1024个thread处理一列，这样写代码会非常方便。（至于这三个thread具体取哪个好，对于一般的算子来说没啥差别，可能只对Gemm会影响大点）
+
+对于**thread数量**，有个必要条件：一个**kernel的blockDim应该至少>=该GPU的一个SM的(最大线程数/block数量)**。例如，对于3090显卡，它一个SM上的最大线程数为1536，最大block数为16，则cuda kernel的blockDim至少应该大于1536 / 16 = 96。否则，无法在理论上达到100%的Occupancy。（占用率也不是越大越好，其实大于70%就差不多了，再往上kernel的性能就和占用率关系不大了）
+
+对于**block数量**，看看occupancy，看看full wave数量和tail wave，根据这些metric来调整block数量，使得**full wave尽可能多，tail wave中的block数量也尽可能多，occupancy尽可能大**，对此cuda也提供了一些API来计算使得occupancy最大的block数量。
+
+*图中，左侧的full wave为2，占比为2/3，tail wave中只有一个block，占比为1/4，这俩的占比都不高，所以需要调整block数量；调整后右侧的full wave占比为4/5，tail wave占比为2/4，这俩的占比都高了，因此对应kernel的性能也会更好*
+
+![](Figure/Interview/33_2.png)
+
+**究极经验公式：**(这样设置一般差不了，Gemm例外，得特调)
+- block数量设置 1~4倍的SM数量
+- thread数量设置 256/512
+
+
+### 34. 假设有N个数，但是你分配了小于N的总线程数，此时可以处理完全部数据吗？如果可以，如何处理？
+可以处理，伪代码如下
+
+```cpp
+int i = blockIdx.x * blockDim.x + threadIdx.x;
+while(i < N){
+    //do something
+    i += blockDim.x * gridDim.x;
+}
+```
+
+### 35. shared memory bank conflict的定义是什么样的？（易错）
+**bank conflict**仅存在于**同一phase**的**不同slot**（slot：槽，针对单个bank内的概念，与不同bank间无关）之间，说存在同一warp的不同线程间是不正确的。
+
+那什么是同一phase？分三种情况：（1byte = 8bits）
+1. 每个线程访问4bytes(例如float)：一个warp内的32个线程处于同一phase 
+2. 每个线程访问8bytes(例如double)：一个warp内的前16个线程处于同一phase，后16个线程处于另一个phase 
+3. 每个线程访问16bytes：一个warp内的前8个线程处于同一phase。
+
+问：T0和T16访问同一slot会不会bank conflict？答：不会（T0和T16线程不属于同一个phase）
+
+问：T0 T1访问同一slot会不会bank conflict？答：不会（虽然T0和T1线程属于同一个phase，但是它们访问的是bank中的同一slot）
+
+问：T0 照常访问当前的0，T1也访问0会不会bank conflict？答：不会（这个case就是上面这个问题的典型，此时会触发广播操作，不会有conflict的）
+
+问：T0 照常访问当前的0，T1访问原本T16访问的那块数据T16会不会bank conflict？答：会（此时T0和T1线程属于同一个phase，且它们访问的是同一bank中的不同slot）
+
+下图中绿色、蓝色代表了两个phase（对应于情况2.），而slot是同一bank内的概念，比如说数据块0的左半部分和16的左半部分它们就属于bank0的不同slot。**无论phase如何构成，一个bank中只存一个cacheline中的4bytes数据，一个cacheline永远都固定有32个bank**。cacheline是固定大小的，128bytes，因此才有了同一phase的三种情况，它本质上是要匹配上cacheline的。
+
+![](Figure/Interview/35.png)
+
+### 36. 如何解决bank conflict？
+[CUDA shared memory避免bank conflict的swizzling机制解析](https://zhuanlan.zhihu.com/p/4746910252)
+两种方法：
+- 方法1：padding
+
+- 方法2：swizzling
+
+
+
+
+
+
 
 ## 六. 大模型量化
 
 ## 七. 大模型推理
 
 ## 八. Leetcode
+几个快速排序学一下

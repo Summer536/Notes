@@ -12,6 +12,8 @@ category:
 
 ## 笔记列表
 
+- [Examination](https://summer536.github.io/Notes/zh/posts/Examination.html) - 秋招笔试记录
+- [Interview](https://summer536.github.io/Notes/zh/posts/Interview.html) - 笔试面试经典题
 - [Deepseek MLA](https://summer536.github.io/Notes/zh/posts/Deepseek_MLA.html) - MLA机制及其实现方法介绍
 - [AWQ](https://summer536.github.io/Notes/zh/posts/AWQ.html) - AWQ激活感知的权重量化
 - [DeepSpeed](https://summer536.github.io/Notes/zh/posts/DeepSpeed.html) - DeepSpeed分布式训练框架
