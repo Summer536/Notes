@@ -925,8 +925,259 @@ __global__ void transpose_swizzling(int* d_A, int M, int N, int* d_B){
 }
 ```
 
+### 37. 如何高效访问global memory？
+1. Aligned Memory access对齐：要获取的Memory首地址可以整除L1/L2 cache line大小，即对齐；
+2. Coalesced Memory access连续：warp的32个thread请求的是连续的内存块；
+
+### 38. 以下几种访问global memory的case，效率(实际利用数据量/总访问数据量)为多少？
+![](Figure/Interview/38.png)
+
+1. **100%** :线程需要了多少就拿进来多少，没有多余访问，且符合37题中给出的两点高效策略；
+2. **100%** :同上，没有多余访问，且符合37题中给出的两点高效策略；
+3. **50%** :warp中前16个线程访问了64-128,而后16个线程访问了192-256,是不连续的内存块。读取时会读取0-256的所有内存；
+4. **1/N** 
+
+### 39. 如果访问global memory的效率低，那是否意味着未被利用到的数据就没用了？如果有，举一个例子说明
+不是，未被利用到的数据会存在L2/L1 cache中（这个cache就是给38题中的两个糟糕的case擦屁股的），在某些存在重复访问某块显存的算例中，这些存在cache上的数据可以被快速的访问到。
+
+举例：GEMM。
+
+### 40. constant memory的作用是什么？举个例子说明
+常量内存没有具体的硬件存储单元，是**全局内存的一种虚拟地址形式，内存空间小，只读，但是读取的速度要比global memory更快**。常量内存有两个特性：
+1. **高速缓存常量**：如下，在host端使用cudaMemcpyToSymbol来传递卷积核函数常量到常量内存，后续使用该核函数的时候会比读global memory快很多；
+```cpp
+__constant__ float kernel[KERNEL_SIZE * KERNEL_SIZE];
+
+int main() {
+    // 初始化卷积核
+    float h_kernel[KERNEL_SIZE * KERNEL_SIZE] = {
+        ...
+    };
+    // 拷贝到constant memory
+    cudaMemcpyToSymbol(kernel, h_kernel, sizeof(h_kernel));
+    ......
+    conv2D<<<numBlocks, threadsPerBlock>>>(...);
+}
+```
+
+2. 它支持**将单个值广播到warp中的每一个线程，不用每个线程都load**；如果每个half-warp/full-warp中的线程需要访问不同的内存地址，这种情况下不适合使用常量内存。
+
+### 41. SIMD和SIMT的区别？
+传统CPU和当前一些通用AI加速器比如昇腾NPU使用的是SIMD编程，通用GPU通常采用SIMT编程。
+
+重点关注前4个对比：
+
+1. SIMD默认是由单线程issue的一条向量指令，SIMT默认是多线程同时issue一条相同指令；
+
+2. 寄存器角度，SIMD是共用一套寄存器，SIMT是每个线程都有私有寄存器
+
+3. SIMD与SIMT的算力对比：由于SIMD的寄存器原因，**SIMD想要算力打满必须打满其寄存器**，例如对于向量宽度为4的SIMD，如果只用了3个slot的话，SIMD就浪费了一个计算单元。而**SIMT就没有这个问题，它的算力和寄存器打不打满没关系，只要能把cuda core都利用起来就行。**
+
+4. 随着线程数的增多，SIMD只能将向量的维度不断加大，而这样的话会产生更多的向量浪费，功耗也会变高；SIMT则没有这个问题。
+
+5. SIMD和SIMT逻辑单元面积对比：单线程下，SIMD相对SIMT需要n倍的逻辑单元。即**单个线程的面积SIMD基本接近SIMT的n倍面积**。
+
+6. 每次更新SIMD指令（mmx -> sse -> sse4.2 -> avx -> avx2 -> avx512 -> amx）都是增加其寄存器个数、寄存器位数、ALU宽度，而SIMT是增加core数。
+
+7. 编程上，SIMD使用C++ Intrinsic，而且每一套ISA调用不同的Intrinsic，还得手动控制/分配内存器；SIMT使用CUDA即C/C++编程模型即可。
+
+### 42. 讲讲Independent thread scheduling（独立线程调度）的概念？
+**独立线程调度功能是由Volta架构引入的，它允许每个线程独立执行，无需等待其他线程。**
+
+**Volta之前，每个warp只有一个公共的活跃PC**（Program Counter程序计数器）可以参与到warp scheduler的仲裁，所以一个分支到底后要弹栈取出另一个分支的pc，然后开始执行另一个分支，导致以前是分支前串行执行，这个现象叫做warp divergence。（如下图的上半部分）
+
+**Volta之后，每个线程都有自己的PC，可以独立执行，无需等待其他线程。**可以同时参与执行仲裁，这样能形成**交错执行**的效果。注意：这里可不是两个分支都执行，而是两个分支的线程交错执行。**交错的好处就是可以掩盖同一分支不同线程执行不同指令的延迟。**（如下图下半部分，掩盖了Stall）。
+
+从程序实现的需求上看，一些问题从算法上就很难避免divergence。Independent thread scheduling可以更好的帮助其隐藏延迟，从而减少divergence的性能损失，但并不能减少divergence本身。但**假如这些延迟本来就被隐藏得很好，或者说本来就几乎没什么stall（比如等待访存结束），那它对性能的帮助就几乎没有了。**
+
+在CUDA中，哪怕只有if语句，也会发生warp divergence，因为warp内的线程条件可能不同。但由于没有else，只会执行一条路径，不需要像if/else那样多走一遍，因此不会对性能造成显著影响。
+
+![](Figure/Interview/42.png)
+
+### 42.1 如何避免warp divergence？
+如下代码会产生warp divergence：
+```cpp
+int tid = blockIdx.x * blockDim.x + threadIdx.x;
+if(tid % 2 == 0){
+    ...//同一warp中的偶数线程执行这边
+}else{
+    ...//同一warp中的奇数线程执行这边
+}
+```
+解决方法：**warp divergence是针对同一warp内的概念，那我们就尽量让同一warp中的线程执行相同的指令即可**。
+
+```cpp
+if((tid/32) % 2 == 0){ //tid/32是warp id，%2是判断奇偶。使得同一warp执行相同指令
+    ...//偶数warp进入这边
+}else{
+    ...//奇数warp进入这边
+}
+```
+
+### 43. GPU是从哪些方面体现出自己是以提高吞吐为中心的？
+重点理解第一点：
+
+1. GPU会**尽可能减少空闲，总会有warp在run**：每个cycle，warp scheduler都会schedule一个warp到dispatch port发射，当发生数据依赖导致stall时，调度算法会schedule其它可用的warp到dispatch port发射，当当前warp执行的function unit忙碌时，**调度算法会schedule不忙碌且不存在数据依赖关系的warp去dispatch发射**，总之，**每个cycle，warp都在发射或者在执行指令**
+
+2. 核数多，但每个核所占面积小
+3. cache面积小
+4. 控制单元面积小
+
+### 44. GPU的存储层次结构是什么？
+
+1. **寄存器**（Register）
+- 片上 / 片外：**片上存储**。寄存器是 GPU 中最接近计算单元的存储，**直接集成在每个流处理器(SM)核心内**。
+- 速度：速度极快，几乎和 GPU 核心的计算速度同步，能够在**一个时钟周期内完成读写操作**，是 GPU 存储层次中访问速度最快的部分。
+- 容量大小：容量有限，**每个线程只能使用几百个寄存器**，具体取决于 GPU 的架构和设计。
+
+2. **共享内存**（Shared Memory）
+- 片上 / 片外：**片上存储**。共享内存位于 GPU 芯片上，**供一个线程块内的所有线程共享使用**。
+- 速度：速度很快，访问延迟较低，通常在**几个时钟周期内**就能完成读写操作，仅次于寄存器的访问速度。
+- 容量大小：容量相对寄存器较大，但仍然有限，一般在几十 KB 到几百 KB 之间。例如，NVIDIA 的一些 GPU 的共享内存大小为 48KB 或 96KB。
+
+3. **L1/L2 缓存**（L1/L2 cache）
+- 片上 / 片外：**片上存储**。L1 和 L2 缓存是位于 GPU 芯片上的高速缓存，用于减少对全局内存的访问次数。
+- 速度：速度较快，**L1 缓存的访问速度比 L2 缓存更快**。L1 缓存的访问延迟通常在**几个到十几个时钟周期**，L2 缓存的访问延迟相对较长，但仍然远低于全局内存。
+- 容量大小：L1 缓存容量较小，一般在**几 KB 到几十 KB 之间**；L2 缓存容量相对较大，通常在**几百 KB 到几 MB 之间**。例如，NVIDIA 的某些 GPU 的 L1 缓存大小为 64KB，L2 缓存大小为 40MB。
+
+- L1与Shared Memory共分几十KB的内存e。
+
+4. **全局内存**（Global Memory）
+- 片上 / 片外：**片外存储**。全局内存通常是 GPU 板载的高速 DRAM/HBM（动态随机存取存储器），位于 GPU 芯片外部。
+- 速度：速度相对较慢，访问延迟较高，通常在**几十到几百个时钟周期**。与片上存储相比，全局内存的读写速度明显较低。
+- 容量大小：容量较大，一般在几 GB 到几十 GB 之间。例如，常见的消费级 GPU 的全局内存容量为 4GB、8GB 或 16GB，而专业级 GPU 的全局内存容量可能更大，达到 32GB 甚至更多。
+
+5. **常量内存**（Constant Memory）
+- 片上 / 片外：常量内存属于**片上存储**。它是 GPU 芯片上**专门用于存储常量数据的一块特殊内存区域**。
+- 速度：访问速度较快。当多个线程同时访问相同的常量数据时，常量内存能够提供高效的访问，因为它具有缓存机制。GPU 会将常量数据缓存起来，这样后续的访问可以直接从缓存中获取，从而减少了访问延迟。一般来说，访问常量内存的延迟比访问全局内存要低得多，通常在**几十个时钟周期左右**。
+- 容量大小：容量相对有限，一般在几十 KB 左右。例如，NVIDIA 的一些 GPU 架构中，常量内存的大小为 64KB。由于其容量较小，通常用于存储那些在整个核函数执行过程中不会发生变化的常量数据，如数学常量、配置参数等。
+
+6. **本地内存**（Local Memory）
+- 片上 / 片外：从概念上讲，本地内存是为每个线程单独分配的私有存储空间，但实际上它通常是**片外存储**。**当寄存器数量不足以存储线程所需的所有数据时，剩余的数据会被存放到本地内存中**。**本地内存通常是基于全局内存实现**的，因此在物理上位于 GPU 板载的 DRAM 中。
+- 速度：访问速度较慢。由于**本地内存本质上依赖于全局内存，其访问延迟较高，与全局内存的访问延迟相当，通常在几十到几百个时钟周期**。而且，本地内存的访问模式可能会导致额外的性能开销，例如当多个线程的本地内存访问发生冲突时，会进一步降低访问效率。
+- 容量大小：容量相对较大，其大小与全局内存相关，因为**它是全局内存的一部分**。但对于单个线程来说，其可用的本地内存空间也受到一定限制，并且具体大小取决于 GPU 的架构和配置。
+
+- **Local Memory是给寄存器溢出（register spill）情况擦屁股的！**
+
+### 45. 寄存器溢出（register spill）是什么？
+寄存器不够用了，不得不把数据存到内存；在寄存器数量不够用的时候，比如GEMM里面通常一个线程会使用很多寄存器；
+
+在编程时是不希望它发生的，因为发生了不管去内存/显存/local memory还是L1 cache里面读，延迟远大于读寄存器，因此会降低性能。
+
+### 46. register spill的解决方法？如何减少register pressure？
+1. **控制循环展开(loop unrolling)的数量**。（循环展开本质上是给循环拆开都分配一遍寄存器以增加并行度，很类似30题。这样就会造成寄存器压力较大）。
+
+2. 将变量的定义移动到要用到它之前，如下代码：
+```cpp
+int a = 1;
+...
+...
+...
+int c = a;
+```
+改为：
+```cpp
+...
+...
+...
+int a = 1;
+int c = a;
+```
+
+3. 在kernel签名处设置launch_bounds**限制MAX_THREADS_PER_BLOCK和MIN_BLOCKS_PER_SM**，那么编译器在编译时将会调整寄存器使用量，减少寄存器压力，从而增大占有率（如何调整呢，它会自动调整让寄存器使用量至少满足MIN_BLOCKS_PER_SM一个SM上的最小block驻留数）
+
+例子：
+场景：优化一个向量加法内核。
+
+未使用 launch_bounds 的版本
+```cpp
+__global__ void vecAdd(float* A, float* B, float* C, int N) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < N) C[idx] = A[idx] + B[idx];
+}
+```
+编译器不知道内核的预期block size，可能激进分配寄存器，导致Occupancy较低。
+
+使用 launch_bounds 的版本
+```cpp
+// 提示编译器：此内核将用256线程/block，且至少需要4个block/SM
+__global__ void __launch_bounds__(256, 4) vecAdd(float* A, float* B, float* C, int N) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < N) C[idx] = A[idx] + B[idx];
+}
+```
+编译器会优先保证：
+- 每个线程块使用 ≤ 256线程（实际启动时也必须≤256）。
+- 每个SM至少驻留4个线程块（优化寄存器分配达到这个目的）。
+同时，你在main函数里面启动的grid和block需要配合launch bounds，实际线程数量不能超过256。
+
+**为什么控制SM上驻留的最小block数量就能控制寄存器呢？**
+
+这是因为如果不控制SM的block数量，SM可能会激进地分配过多的寄存器给一个block，这样的话如果多个block驻留到该SM上就会造成后续的block寄存器不够用，从而造成register spill。而设置最小block数量后（比如4个），则是告诉SM你分配的寄存器至少要满足比如4个block的需求。
 
 
+### 47. float4类型的作用是什么？是否总能带来性能的提升？
+
+float4是使用一条指令同时读取了4个元素，相比传统读取减少了三个load指令，从而减少了访存延迟，增大仿存带宽。
+
+**它并不是总能带来正收益，相反有可能造成负收益**
+
+20*32个数据用了float4读取后只需要5个warp，不用float4则需要20个warp，可用看出线程数量降低了，那么这有可能影响了GPU的并行度，占有率降低，（20个warp比5个warp哪个更好呢？不好说，但是一般20个warp是保险点。launch 20个warp stall的概率比较低，因为可调度的warp变多了。N-cu的表现为eligible warps的比例是比较高的）
+
+所以应该找到一个合适的tradeoff点，使得既没有影响GPU并行度，也利用了float4对带宽的优势，这个主要是根据数据量决定，以及**使用nsight compute来profile查看warp state和 scheduler statisitcs的eligible warps比例，如果比例大，那么可以使用float4**（这个比例表示当前cycle下发射warp的可选择性，越大代表可选择的warp数越多，一般要大于1）
+
+
+### 48. CUDA kernel launch耗时主要是耗在哪里？
+
+主要包括以下两部分：
+
+1. CUDA kernel是**由CPU提交到GPU kernel engine**的，这个提交是需要耗时的。
+
+2. 提交之后，需要**等待资源**。每代GPU的kernel engine数量不一样，但是总的来说，每一个kernel都会进入到kernel engine（可以理解为一个队列）排队，当kernel的**输入数据通过copy engine拷贝到了GPU**且**kernel处于kernel engine队头时**，该kernel才会被执行。
+
+
+### 49. GPU上的异步和同步是什么意思？
+异步分两个，其一是指**CPU和GPU并行执行任务**，其二是GPU上的非default stream间并行执行任务（**GPU stream的异步**）。
+
+同步指CPU等待GPU的执行完成再执行下一步任务或者GPU上的stream等待另一个stream执行完再执行下一个任务。
+
+### 50. 什么是GPU的occupancy？它主要受哪些因素的影响呢？
+
+occupancy是**指SM上活跃的warp或block数 除以 该SM的最大活动warp或block数**。
+
+主要受以下因素的影响：
+
+**寄存器用量限制**：假设一个SM上最多提供65536个寄存器，该SM理论支持的最多48个warp活跃。现在假设一个kernel中的一个线程使用56个寄存器，则它的occupancy算法为：首先该kernel的每个warp将会使用32*56个寄存器，则该kernel最多有$65536/(32*56) = 36$个warp活跃，则该kernel的occupancy为$36/48 = 0.75$。
+
+**Shared mem用量** 假设一个SM上最大smem为32678bytes，该SM理论支持的最多48个warp活跃。现在假设一个kernel中的一个block（128线程）使用5120bytes的smem，且还有固定1024bytes的系统占用，则它的occupancy算法为：首先该kernel的每个warp将会使用$(5120+1024)/4= 1536$个字节的smem，则该kernel最多有$32678/1536 = 20$个warp活跃，则该kernel的occupancy为$20/48 = 0.42$。
+
+实际占有率不同于理论占有率，它受一些其他因素影响比如负载不均衡（33题），需要实际去跑kernel，通过ncu来判断占有率的大小！
+
+
+### 51. 对于reduce类的算子，考虑shape为[M,N]，N>1，reduce后的shape为[M,1]，那么对于M>>N的情况如何做优化？
+
+其实reduce算子我们觉得优化个差不多就够了，因为这个算子在模型推理中的使用频率不高，并且即使根据不同的长度去做针对性的优化，性能提升也有限，对核心的performance影响很小。因此这里只是对面试的一个解答，回答思路即可。
+
+核心：**尽可能的用满GPU 的 SM 数量**，full wave占比高一点，tail wave中的实际执行比例也要高一点。令其尽量为sms（满SM数量）。
+
+1. 对于M, 
+    - If M < sms 分配M个block，每个block的threads数量128 256 512（经验值即可）
+    - Else if sms < M < 2*sms 分配sms个block，再用for循环处理剩余M
+
+    - Else if 2*sms < M < 3*sms 分配2*sms个block，再用for循环处理剩余M
+
+2. 对于N，
+    - If N < 1024, 该行分配1个block，每个block循环处理ceil(1024 / threads)次
+
+    - Else 1024 < N < 2048, 改行分配2个block，每个block循环处理ceil(1024 / threads)次
+
+    - Else a * 1024 < N < (a +1) * 1024, 改行分配a+1个block，每个block循环处理ceil(1024 / threads)次
+ 
+3. 对于M<<N, => N方向分配多个block处理，数据直接从global memory到register做reduce。
+
+4. 对于M>>N, => N方向分配1个block处理，数据可以先保存到shared memory再reduce。
+ 
+以上，非标准答案，if else分类的越细，分配粒度越细，性能越好
 
 
 
