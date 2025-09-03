@@ -677,7 +677,7 @@ class SimpleAttention(nn.Module):
             # dim=-1表示对最后一个维度进行softmax，每一行（比如第 i 行）表示：第i个token对所有其他token的原始注意力分数
             # 所以要在每行内部做 softmax —— 也就是在最后一个维度（列方向）上操作。
 
-        ## O = attn_weights * K
+        ## O = attn_weights * V
         output = torch.matmul(attn_weights, V) #[bs, seq_len, d_head]
         output = self.W_o(output) #[bs, seq_len, d_model]
 
@@ -878,11 +878,52 @@ while(i < N){
 
 ### 36. 如何解决bank conflict？
 [CUDA shared memory避免bank conflict的swizzling机制解析](https://zhuanlan.zhihu.com/p/4746910252)
-两种方法：
+首先传统的transpose.cu计算如下：
+```cpp
+__global__ void transpose_naive(int* d_A, int M, int N, int* d_B){
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    __shared__ int s_data[32][32];
+
+    if(row < M && col < N){
+        s_data[threadIdx.x][threadIdx.y] = d_A[row * N + col];
+        __syncthreads();
+        int n_col = blockIdx.y * blockDim.y + threadIdx.x;
+        int n_row = blockIdx.x * blockDim.x + threadIdx.y;
+
+        if(n_row < N && n_col < M){
+            d_B[n_row * M + n_col] = s_data[threadIdx.y][threadIdx.x];
+        }
+    }
+}
+```
+两种方法解决bank conflict：
 - 方法1：padding
-
+```cpp
+__shared__ int s_data[32][32+1];
+```
 - 方法2：swizzling
+swizzling是一个异或的算法。
+```cpp
+__global__ void transpose_swizzling(int* d_A, int M, int N, int* d_B){
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
 
+    __shared__ int s_data[32][32];
+
+    if(row < M && col < N){
+        s_data[threadIdx.x][threadIdx.y^threadIdx.x] = d_A[row * N + col]; //这里就是swizzling
+        __syncthreads();
+        int n_col = blockIdx.y * blockDim.y + threadIdx.x;
+        int n_row = blockIdx.x * blockDim.x + threadIdx.y;
+
+        if(n_row < N && n_col < M){
+            d_B[n_row * M + n_col] = s_data[threadIdx.y][threadIdx.y^threadIdx.x]; //这里就是swizzling
+        }
+    }
+}
+```
 
 
 
