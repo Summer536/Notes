@@ -1180,10 +1180,76 @@ occupancy是**指SM上活跃的warp或block数 除以 该SM的最大活动warp�
 以上，非标准答案，if else分类的越细，分配粒度越细，性能越好
 
 
-
 ## 六. 大模型量化
 
+### 52. 介绍一下calibration(校准)的原理？为什么要做calibration？
+Calibration用于**确定激活值（Activation）（注意不针对weight权重）的缩放因子（scale）和零点（zero-point），以便将浮点数转换为整数（如 INT8）**。利用样本数据对模型进行一遍推理，推理结果中求出scale和zero-point，后续的量化过程中根据这两个值来量化激活值。
+
+为什么要做它？ **activation激活值的动态变化范围大**，所以需要用真实数据提前推理一遍拿到activation的范围，以此减小activation的量化误差。
+
+### 52.1 关于calibration的算法请介绍几个？
+宗旨都是找出最小量化误差，量化误差越小，量化精度越高。例如有：
+
+**minmax**：直接拿activation的实时min和max代入下面公式
+$$
+scale = \frac{max - min}{2^{bit}-1}
+$$
+
+**KL散度**：
+1. 统计激活值的直方图（Histogram），并假设其服从某种概率分布（如高斯分布）。
+2. 选择一个最优的截断点（threshold），将大于该阈值的部分截断，减少 outliers 的影响。
+3. 通过 KL 散度（Kullback-Leibler Divergence） 计算量化后分布和原始分布之间的距离，选择最优阈值，此阈值即min和max，然后再运用min max算法
+
+### 53. 量化产生的精度问题，一般能采用什么方法来解决？
+
+**通过打印的方法，找到哪个op和layer造成的问题比较大**：
+1. 打印fp32和int8每层量化layer的值并计算二者间的误差（比如MSE）
+
+2. 根据MSE排序，大的优先fall back回fp32
+
+**通过经验的方法，找到哪个op和layer造成的问题比较大（一般是第一个或者最后一个layer）**：
+
+1. 第一个量化的layer，因其首先被量化，作为量化的入口，引起的误差可能最大，可以试着先fall back。
+2. 最后一个量化的layer，因其最后被量化，作为量化的出口，误差累计最大，可以试着先fall back。
+
+**二分法（算法层面解决）**：
+
+不断fall back一半所有量化layer数量，最终找出引起误差的目标layer。
+
+
 ## 七. 大模型推理
+
+### 54 BERT transformer和GPT transformer的区别？
+
+1. Encoder vs Decoder
+2. 双向注意力 vs 单向注意力，前者考虑左右上下文理解文本语义时更全面，比如完形填空，后者只能看到过往的token，然后来生成将来的token。
+3. bert通过Masked Language Model（MLM）的方式，随机掩盖输入文本中的某些词，然后让模型预测这些被掩盖的词，类似于完形填空；gpt通过预测下一个词来做训练
+
+### 55.为什么当前大模型都是Decoder-only架构？
+抄着背一背
+
+1. 从研究经验上来讲，该架构对下游任务的Zero-shot和Few-shot任务**泛化能力更强**。
+2. 相比于双向注意力，decoder架构的下三角矩阵为满秩状态，**建模能力更强**。
+3. decoder架构的kv cache可以复用，**对多轮对话更加友好**。
+4. decoder only+ next token预测的模式，每个位置所能接触的信息相比其他架构有限，因此预测下一个token的难度更大，训练出的**模型通用表征能力更强**。
+
+### 56. 为什么存在kv cache，而不存在q cache？
+
+![](Figure/Interview/56_1.png)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## 八. Leetcode
 几个快速排序学一下
