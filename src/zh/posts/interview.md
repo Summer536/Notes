@@ -1237,6 +1237,125 @@ $$
 
 ![](Figure/Interview/56_1.png)
 
+忽略1/sqrt(dk)，
+
+![](Figure/Interview/56_2.png)
+
+加入Causal Mask会变成这样:
+
+![](Figure/Interview/56_3.png)
+![](Figure/Interview/56_4.png)
+
+可以看出**在序列的t位置，Q只有当前位置的 qt 参与了计算，而K和V多个位置参与了计算**，所以需要KV Cache，而不需要Q Cache。
+
+那我现算kv不就好了，为啥要存下来呢？
+
+其实**计算 K、V 矩阵的过程是个典型的内存密集型过程**，它需要加载每一层的 K、V linear weight。也就是如果不做任何缓存，假设 prompt 长度很短而输出长度接近 token 的最大长度 4096，到了最后一个 token 的时候，单是重复计算前面每个 token 的 K、V 矩阵，就需要读取内存 4096 * layer数量 * 2(k和v) * hidden size * hidden size= 40T ，每次 2 个字节，要知道 H100 的显存带宽只有 3.35 TB/s，4090 更是只有 1 TB/s，这单是最后一个 token 就得耗掉一张卡几十秒的时间来算出kv。这样，token 的输出就会越来越慢。
+
+可以看[Deepseek_MLA.md](https://summer536.github.io/Notes/zh/posts/Deepseek_MLA.html)的1.3节对kv cache的显存占用计算进行了分析。
+
+### 57. 大模型训练过程中，是哪些部分占用了显存？大模型推理呢？
+参考资料：[分析transformer模型的参数量、计算量、中间激活、KV cache - 知乎](https://zhuanlan.zhihu.com/p/624740065)
+- 训练：**weights(fp16/bf16) + gradient(fp16/bf16) + Adam优化器一阶动量(fp32) + Adam二阶动量(fp32)** + Adam存储备份的weights(fp32)和gradients(fp32)
+
+- 推理：**weights(fp16) + kv cache(fp16)** + 中间激活值
+
+### 58. 接上题，给定大模型的参数量，估计训练和推理的显存占用
+参考资料：[分析transformer模型的参数量、计算量、中间激活、KV cache - 知乎](https://zhuanlan.zhihu.com/p/624740065)
+
+假如现在有7b大模型,batch size为8，seqlen为8192，hidden_size为4096，layer数量为80
+- 训练：7 * 2(weights) + 7 * 2(gradient) + 7 * 4 * 2(Adam一阶和二阶动量) + 7 * 4(Adam存储备份的weights) = 112GB
+**（一般会将备份的gradients丢掉）**
+
+- 推理：kv cache(fp16) = bs * seqlen * hidden_size * layer * 2(fp16) * 2(k和v) = 8 * 8192 * 4096 * 80 * 2 * 2 = 85GB;  
+总推理显存占用 = 85GB + 7 * 2(weights) + 中间激活值（每层的中间激活都不会复用，用完即删除，其占用可忽略。如果非要计算的话，算一个最大的中间激活即Q*K的输出(bs,num_heads,seqlen,seqlen)即可） = 85GB + 14GB = 99GB
+
+### 59. 讲一下Deepseek MLA机制
+详细见[Deepseek_MLA.md](https://summer536.github.io/Notes/zh/posts/Deepseek_MLA.html)
+![](Figure/Interview/59.jpg)
+
+1. **非RoPE部分**：qc=Wq * input，kc=Wk * input, vc = Wv * **input三者的W换成了LoRA似的降秩和升秩矩阵**，即q_no_rope=input * WDQ * WUQ, kv同理
+2. **RoPE部分**：仅针对qk，不针对v，q和k的rope分量是deepseek额外增加的，head size为64，q_rope由input * WDQ * WQR得到，k_rope由input * WKR得到, k需要做Broadcast。
+3. **非rope部分和rope部分concat起来**得到q=[qc;q_rope] k=[kc;k_rope]，v=[vc]，在naive版本中，scale dot product attn处**naive版本仍然是MHA**。
+4. 在优化的矩阵吸收版本中(https://www.bilibili.com/video/BV1F5NvzbEdy/）， **矩阵吸收版本：含rope部分的qk做MQA，不含RoPE部分做MHA**。
+
+
+### 60. MLA相比于MQA、GQA、MHA的优势？
+详细见[Deepseek_MLA.md](https://summer536.github.io/Notes/zh/posts/Deepseek_MLA.html)的2.4小节
+
+MLA缓存的Latent KV比较短（相当于**2.25个MQA的缓存量**），但MLA有恢复全head k,v 的能力（通过WUQ和WUK），**特征表达能力显著比GQA、MQA要强**。所以MLA能做到**又快又省又强**。
+
+
+### 61. MoE模型相比于非MoE模型的变化？
+![](Figure/Interview/61.png)
+MLP：指FFN前馈神经网络，是transformer中除了self attention之外的另一个重要的组成部分。
+
+原本的非MoE模型其hidden_states（即self attention的输出）直接送到MLP就可以了。
+
+现在MoE将MLP分为了各个专家（deepseek中还将专家分为了 *共享专家(所有token全部使用)* 以及 *路由专家(token分发)* 两种）。MoE中每个token需要经过门控网络(**Router**)，计算出每个**专家的权重**，然后根据权重将token送到对应的**专家中计算，计算过程依然是MLP**。最后再多个专家计算出来的**weight做一个加权和**然后再输出。  
+
+### 62. 以上MoE kernel的潜在优化点？
+![](Figure/Interview/62.png)
+
+先讲单卡：
+1. routered expert（上图中间红框）的优化：**不同路由专家间的权重计算可以采用Group GEMM**来加速，并且可以**融合Swiglu**的做融合算子减小launch开销。
+
+- 普通GEMM：一次调用处理一个矩阵乘，主要用于常规的矩阵乘法。
+- Batch GEMM：多个独立 GEMM一次 kernel 启动并行计算。主要用于几个共享专家权重的并行计算。
+- **Group GEMM**：同样适用于多个独立GEMM同时计算，并且它允许一组 GEMM 的矩阵大小不同。主要用于不同路由专家间的权重计算。Batch gemm就是Group gemm的一种特殊情况。
+- 这里重点讲一下不同路由专家间的权重计算的优化思路： 首先不同专家分配得到的Token的id和数量都是不一样的，有的多有的少，也就是矩阵乘 $A*B$ 的Ashape（因为token数不一样，该矩阵行数不一样）不同；与此同时不同专家的weight也是不一样的，也就是矩阵乘 $A*B$ 的B大小不同。所以这时最naive的办法就是对每个专家都launch一个GEMM让他们分别计算；其次想到的优化手段就是将A的shape padding到一样，然后就可以做BatchGEMM了；最后的优化就是使用GroupGEMM，它允许A的shape不同，非常适用于这里。
+
+2. 做一些**kernel算子的优化**：比如优化TopK kernel，sort kernel（调cub::Sort）等。
+
+再讲多卡（多GPU间做EP专家并行）：
+
+需要优化3和4两个算子的性能，主要是通信的开销。
+
+3. all to all dispatch：负责上图中copy_input_tokens右侧箭头的token分发
+
+4. all to all combine：负责上图中routered experts红框下方的unpermuted，跨卡的token聚合。并且这个是unpermuted是可以和下方的reduce_output做算子的融合的。
+
+- [一点浅见：deepep 为什么快？](https://zhuanlan.zhihu.com/p/28867733102)这篇文章详细介绍了all to all dispatch以及all to all combine的概念和优化。简言之，前者就是做token给不同路由专家的分发，后者就是做不同路由专家的计算结果的聚合。
+
+### 63. 推理和训练的GPU的侧重性：
+**训练要用高端大卡，推理性能低的卡就可以。**
+
+**训练需要高通信带宽，高精度浮点运算**
+
+**训练要用高精度FP32,BF16；推理低精度即可FP16，INT8**
+
+![](Figure/Interview/63.png)
+
+### 64. 我们都知道随着句子长度seqlen的增加，似乎transformer的计算量越来越多，那么对于encoder而言，seqlen的增加，计算量、访存量和计算密度是一直增加吗？对于decoder呢？
+[参考论文](https://arxiv.org/abs/2302.14017)
+
+encoder(bert)和decoder(gpt2)的**计算量**和**访存量**随seqlen的变化:
+
+![](Figure/Interview/64.png)
+
+1. 左图显示二者计算量随seqlen是线性增加的。
+2. 右图显示二者访存量GPT2是增加很多的，原因是decode是生成式模型，随着seqlen的增加，生成下一个token需要访问的kv cache会越来越多。
+
+
+encoder(bert)和decoder(gpt2)的**计算密度**（=计算量/访存量）随seqlen的变化：
+![](Figure/Interview/64_2.png)
+
+3. 这里有个有趣的现象，**bert的计算密度是先增大后减小的**，为什么呢？
+
+- 这是因为在attention里面 **$q * k$** 得到的 S 的 shape 是 [batch size, head num, seqlen, seqlen] ，**计算量和seqlen成平方阶**，以及 $q*k$ 后面的 **attention mask 和 softmax 等 elementwise 操作**的**访存量增长也和 seqlen 成平方阶**，所以随着 seqlen 的逐渐增大，bert里面的计算量和访存量都会增加。
+- 并且**seqlen小的时候**整个模型层面**FFN**（batch size, seqlen，hidden size)*(hidden size, hidden size)相对attention的访存量和计算量**呈主导**趋势，所以此时计算密度增大
+- 但是seqlen达到某个拐点后（**seqlen>hiddensize后**) **attention 开始呈主导趋势**，访存量由于**attention mask和softmax的存在增长的更多，所以计算密度总体呈减小**态势。
+
+4. **GPT的计算密度始终没变**，这是因为decode阶段seqlen始终为1，只对k len有影响，增加的计算量和访存量比例大致相等，所以整体计算密度稳定。
+
+### 65. Flash attention V1解决了什么问题，它可以直接用于推理吗？
+详细见[Flashattention.md](https://summer536.github.io/Notes/zh/posts/flashattention.html)
+
+![](Figure/Interview/65.png)
+上图self attention算子中如果不做算子融合，他们都是[seqlen, seqlen]的中间buffer，占用的显存空间很大的。Flash attention V1做的就是做这些算子的融合。
+
+**不可以直接用于推理，后续有专门的flash-decoding 来做推理上的优化（本质上是在K len维度做了并行）。** 见81题。
+
 
 
 
