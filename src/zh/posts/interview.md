@@ -1611,9 +1611,6 @@ TVM等非大模型推理引擎/编译器：
 ![](Figure/Interview/90_1.png)
 
 
-
-
-
 ## 八. Leetcode
 优先级第一：DFS 、 二叉树
 二叉树的解法和编译器非常相似。
@@ -1622,4 +1619,67 @@ TVM等非大模型推理引擎/编译器：
 
 优先级第三：拓扑排序（两个课程表）
 
-几个快速排序学一下
+### 91. C++实现经典数据结构
+1. Vector
+2. List
+3. String
+
+构造函数、析构函数、拷贝构造函数、拷贝赋值函数、移动构造函数、移动赋值函数
+
+### 92. C++写算子
+```cpp
+//Softmax
+// e^(xi - max(xi)) / sigma(e^(xi - max(xi))), 求[row, cols]的softmax
+void softmax(float* input, float* output, int row, int cols) {
+    for (int i = 0; i < row; i++) {
+        float max_val = input[i * cols];
+        for (int j = 1; j < cols; j++) {
+            max_val = max(max_val, input[i * cols + j]);
+        }
+        float sum_exp = 0;
+        for (int j = 0; j < cols; j++) {
+            sum_exp += exp(input[i * cols + j] - max_val);
+        }
+        for (int j = 0; j < cols; j++) {
+            output[i * cols + j] = exp(input[i * cols + j] - max_val) / sum_exp;
+        }
+    }
+}
+
+```
+
+### 93. CUDA写算子
+1. Reduce
+
+```cpp
+
+```
+2. Transpose
+
+![](Figure/Interview/94_1.png)
+```cpp
+__global__ void transpose(float* input, float* output) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int tidx = threadIdx.x;
+    int tidy = threadIdx.y;
+
+    __shared__ float s_data[32][32];
+
+    if (row < M && col < N) {
+        s_data[tidx][tidy] = input[row * N + col];//这里存block的时候已经做了转置了，如上图的中间
+        __syncthreads();
+
+        int newrow = blockIdx.x * blockDim.x + threadIdx.y;
+        int newcol = blockIdx.y * blockDim.y + threadIdx.x;
+        if(newrow < N && newcol < M){
+            output[newrow * M + newcol] = s_data[tidy][tidx];//s_data[tidy][tidx]是做了语义恢复，如上图的右边
+            __syncthreads();
+        }
+    }
+}
+```
+3. Softmax
+![](Figure/Interview/94_2.png)
+
+4. GEMM
