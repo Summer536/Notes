@@ -1356,15 +1356,259 @@ encoder(bert)和decoder(gpt2)的**计算密度**（=计算量/访存量）随seq
 
 **不可以直接用于推理，后续有专门的flash-decoding 来做推理上的优化（本质上是在K len维度做了并行）。** 见81题。
 
+### 66. vLLM提出的kv cache管理机制解决了什么问题？
+建议有时间一定要精读paper:《[Efficient Memory Management for Large Language Model Serving with PagedAttention](https://arxiv.org/pdf/2309.06180)》有讲关于parallel sampling的kv cache节约；
+
+如下，在该机制提出之前，kv cache只有**不超过40%的存储用来存储token的hidden states**，其它空间为**预留的空间**、**内部碎片**(kv cache为max seq len而留）、**外部碎片**（主要是new malloc造成的）
+
+![](Figure/Interview/66.png)
+
+### 67. vLLM提出的kv cache管理机制具体是怎么样的机制？
+**以block为粒度来管理kv cache**，block size为一个block的slot数量，一个slot代表一个token的hidden units，如下所示，这种情况下，最多浪费最后一个block的容量，即block3的剩余未填满的slots，相比之前，极大的减小了浪费的显存。
+
+![](Figure/Interview/67_1.png)
+![](Figure/Interview/67_3.png)
+
+如上图，blocksize设置为了4，它仅仅浪费了Block3的3个slots，以及Block5的1个slots。
+
+### 68. 如果decoding algorithm为beam search，vLLM会对kv cache如何管理？
+Bearm search现在关注度比较低了，看看就行
+![](Figure/Interview/68_1.png)
+![](Figure/Interview/68_2.png)
+假如beam width=4，基于**shared block**和**copy on write block机制**，block0为4个候选人shared的block，因为 此刻4个候选人的内容是一样的，比如都是"你是吴彦祖"；下一个时刻，候选人3开始分叉，说明它的生成内容和另外三个不同了，比如候选人012此时为"你是吴彦祖，那我是谁"，候选人3为"你是吴彦祖，你好帅啊"；下一个时刻，类似；下一个时刻，4个候选人生成的内容都不一样了，所以通过copy on write生成了block5和7，此时候选人0的句子的kv就保存在block0135，候选人2的句子的kv就保存在block0137；下一个时刻，候选人1和2的两个beam为4*4=16个beam中的top4，被选中继续做beam search，于是，之前候选人0和3的block5和block8就没用了，引用计数为0，被释放掉。
+由此来最大程度节约kv cache block的分配。
+
+### 69. vLLM作为一个serving框架，提出的请求schedule机制解决了什么问题？
+主要是解决了**early-finished**和**late-joining**的问题，如下图x1和x2两个句子打包为一个batch送到推理引擎，x2在iter2生成you之后就结束了，这个即early-finished，然而x1要到iter4才结束，这使得x2不得不等待到iter4才能释放，那么在请求队列里排队等待的请求就只有在iter5才开始被送到推理引擎，这个即late-joining。
+
+**continuous batching = iteration level schedule**
+
+![](Figure/Interview/69.png)
+
+### 70. 介绍一下iteration level schedule？
+
+iter-level schedule。上题那种request-level schedule，造成了early finished和late joining，进一步造成了请求的无谓等待，浪费了GPU计算资源，也降低了吞吐；于是**iter-level schedule在每个iter都检查是否有句子生成完毕，如果有，就及时释放该句子的占用资源(比如kv cache)，并且把request队列中的待推理request给加入进来执行推理**。（如69题图）
+
+### 71. 说出大模型推理优化中你知道的算子融合例子？
+
+Flash decoding，paged attn，addresidual+layernorm，MaskScaledSoftmax，FlashMLA, fusedMoE
+
+包括62题中的 group gemm + Swiglu， 以及 unpermuted + reduce_output。
+
+### 72. 算子融合为什么可以带来性能提升？
+1. **减少kernel launch开销**（48题）
+2. **减少算子之间中间tensor对全局内存的读取和写入**, 例如：conv+bias
+
+### 73. 既然算子融合这么牛逼，为什么不能融尽融把整个模型的算子都融合起来？
+1. **算子融合要求融合前后数学等价**，并不是任何几个算子都能做到融合后可以等价，这里是工程实现难度
+2. **硬件SRAM（共享内存）、reg有限** 因为融合是需要把kernel的中间buffer写到共享内存和寄存器中的。
+3. 整个融合的大算子不具备普适性，收益不正比于投入。因为各个模型的架构都是不同的。
+
+### 74. 随便两个算子做融合就能带来性能提升吗？为什么？
+不会一定能带来性能提升。
+
+因为**算子融合的大部分收益的前提**是下一个**算子是访存密集型**（conv2d+bias+relu），那么融合后该算子可以省去算子与算子之间的memory traffic，即访存量减少带来的收益，否则，如果下一个算子是计算密集型，瓶颈都不在于访存，那么收益几乎为0，比如**两个瓶颈为计算的计算密集型matmul融合，收益几乎为0**，但是matmul和biasadd做融合，那么收益会很大: Time(matmul) + Time(biasadd) > Time(matmul+biasadd)
+
+### 75. 大模型量化和之前的小模型量化区别在于哪？
+1. **大模型的activation有很多异常值outlier**，并且这些outlier分布在某几列，如果按照小模型per tensor/perchannel量化的套路，那么这些outlier将会缩小量化的有效范围，增大量化误差，所以大模型量化提出了很多针对outlier的量化idea，比如**把这部分outlier抽取出来，保持为高精度(fp16)，剩下的为低精度(int8/int4)**，参考[llm.int8](https://arxiv.org/pdf/2208.07339)这篇paper(文章中指出一般大于7B的模型就会出现这中异常值的情况)
+
+2. 大模型的weight并不是每一行每一列重要性都是一样的，需要**甄选出重要的weight**，其它不重要的，可以量化为更低的精度(int3/int4)，参考[AWQ](https://summer536.github.io/Notes/zh/posts/AWQ.html)
+
+
+### 76. 大模型量化主要量化哪些算子？为什么不量化其他算子？
+一般量化Linear。
+
+1. 从显存占用上考虑：linear占用的显存最大。
+2. 从时间占比上考虑：linear占比最大。
+3. 精度影响上考虑：linear对精度改变不太敏感，而softmax、layernorm对精度改变比较敏感（甚至他们还需要FP32去做）。
+4. weigth上考虑：linear的weight最多，softmax和layernorm这种都没啥weight呀。
+
+### 77. 大模型量化为什么一般不量化激活activation？
+
+参考上题的三方面，激活在推理过程中的显存占比低（用完即删），不般不到3%，加上激活的数据分布不均匀，量化难度很大。
+
+### 78. kv cache有哪些优化手段？
+
+1. GQA，MQA，MLA
+2. 量化， int8/fp8/int4
+3. Block级内存优化，例如：paged attention
+4. 滑动窗口KV，例如：Longformer
+5. H2O，重要性排序，TOPK的token的kv保留
+6. NSA/MOBA，稀疏化kv cache
+
+**上面这些优化的方法有哪些需要改变模型训练的方法，有哪些只是工程上的优化手段？**
+
+答：1、6需要在模型训练时就按该策略训练好；
+
+2、3、4、5都是工程上的优化，与模型训练无关。
+
+### 79. Flash attention V2 相比 V1有哪些改进？
+
+详细见[Flashattention.md](https://summer536.github.io/Notes/zh/posts/flashattention.html)
+
+V1: **KV的列为外循环,Q的行为内循环**,一次出**全部的结果O(i)**,但是需要通过外循环来**不断更新完整的O(i)**, 直到外循环结束更新为正确的O(i)
+
+V2: 交换循环顺序，**Q的行为外循环，KV的列为内循环**，一次性出**一个结果块O(i)**，使得内循环结束后只**做一次rescaling就可以得到完整的O(i)**
+
+1. **非矩阵乘法部分的计算量得到了减少**，具体在于v1在每次k列循环后，得到了新的m（x_max) 和l (sum(exp(x-m)), 然后会去更新上一个循环对应block的分子处的m以及分母处的l，v2发现没有必要每次k列循环都先更新l后参与P * V，只需在最后一次循环完成l的更新后再去作为O的分母即可。（即V2只考虑一次softmax的分母计算，在最后一步算一次即可）
+
+2. **优化warps在QK矩阵上的读写，从而减少了warp间的额外通信**，如下图，v2中，warp1-4均可以访问一整个k_len，那么在QK * V的过程中，无需做warp之间的reduce，然而对于v1，则需要warp1-4做warp间的reduce，最终才能得到O结果
+![](Figure/Interview/79_3.png)
+
+3. **对seqlen维度充分并行**，主要考虑到batchsize*numheads小于SM个数的情况下，无法打满SM算力，此时seqlen一般都很大，需要对seqlen维度充分并行。主要的实现就是在于FlashAttention-2将Q移到了外循环，KV移到了内循环，由于改进了算法使得warps之间不再需要相互通信去处理Q，所以外循环可以放在不同的block上。
+
+
+### 80. Flash attention v1 v2现有的处理attention mask代码你认为是否有性能缺陷？如果不是，可以如何优化？
+
+有，Flash attention v1 v2其实它**对多种mask方法的支持是不足的，它只支持一些常规的mask**。但是模型训练其实是需要多种mask策略的，它们想将这些mask应用于flash attention 但又不想由于不适配导致其性能的降低。**百度的Paddle团队解决了这个问题，详见[FlashMask](https://mp.weixin.qq.com/s/6ROApQR5Pf_sRHOaYjcIWA)**
+
+缺陷在于：标准的flash attention 的 mask为一个shape为[batchsize, head num, q len, k len]的稠密矩阵，这个稠密矩阵会和attention score S相加，然后做softmax，在这个过程对应的公式是softmax(S+Mask), flashattention的做法是直接S和Mask相加，这里的性能缺陷在于需要从HBM读shape为[batchsize, head num, q len, k len]的mask稠密矩阵，这个矩阵是O(N^2)的，与句子长度呈平方阶。
+
+### 81.flash decoding主要做了什么优化来解决什么问题？这种idea在何种场景下提升最大
+1. **K len维度的充分并行**。推理阶段，attention中**q*k^T**部分的shape变换为[batch size, num heads, **q_len, head dim**]x[batch size, num heads, **head dim, k_len**], 其中**k_len表示上下文长度**，比如多轮对话的时候，你与gpt的第五轮对话，此时k_len等于之前所有轮次你方的句子长度+gpt方吐出的句子长度，而**q_len仅仅为当前第五轮你方的句子长度**，因此k_len此刻一般远大于q_len，而v1没有在k_len维度分配多个block并行处理，只在q_len维度分配了q_len个block，以及batch size维度分配batch size个block，以及num heads维度分配num heads个block,**如果此时刚好位于大模型推理的decode阶段，那么q_len为1**，再加上batch size比较小，那么这显然不能充分利用SM资源，所以flash decoding在k_len维度分配多个block来并行处理一部分seq，最终每个block做一个额外的reduce，把结果聚合起来，才是最终的O结果，这个也叫做splitK。
+
+2. 在batch size越小，q len越小，k len越大的场景，提升最大。
+![](Figure/Interview/81.png)
+
+### 82. flash attention v3优化了啥？
+[FlashAttention-V3解读之Hopper GPU版FlashAttention (上篇)](https://mp.weixin.qq.com/s/cclvT7PxQzdkm9nYfWbhmQ)
+
+[FlashAttention-V3解读之FP8/FP16/BF16关键细节实现 (下篇)](https://mp.weixin.qq.com/s/9sDJlHQRzSiuTc_EmwjxzA)
+
+Flash attention V3主要是对Hopper架构的优化，其他与V2一样。
+
+这个简单了解一下即可，因为现在Hopper架构用的公司还不多。
+
+1. 生产者producer和消费者的异步化：利用TMA做数据搬运让tensor core掩盖数据搬运延迟；需要依靠Hopper架构的"TMA"和"barrier"，因此无法适用其他的架构。
+
+2. GEMM 和 softmax的overlap： Hopper中将之前的MMA替换为WGMMA（tensor core），以实现天然与softmax的cuda core的异步。利用算力高的的tensor core busy掩盖算力低的cuda core计算exp。需要依赖Hopper架构的WGMMA技术。
+
+3. 首次支持FP8 FlashAttention。
+
+
+### 83. 举出大模型应用领域shared prefix的出现场景
+**System prompt**：
+![](Figure/Interview/82_1.png)
+**多轮对话**
+![](Figure/Interview/82_2.png)
+
+### 83.1 为什么要进行prefix cache优化？
+[[Prefill优化][万字]🔥原理&图解vLLM Automatic Prefix Cache(RadixAttention): 首Token时延优化](https://zhuanlan.zhihu.com/p/693556044)
+
+[[Triton编程][进阶]📚vLLM Triton Prefix Prefill Kernel图解](https://zhuanlan.zhihu.com/p/695799736)
+
+**避免每轮对话都去recompute prefix/generated kv, 因为prefill阶段本身就是compute bound，算力有限，所以应该避免recompute，从而降低TTFT**
+
+
+**SGlang 基数树是如何控制要不要分离结点的？**
+
+SGLang 的基数树并不是一开始就把每个 token 单独存储，而是把连续的公共 token 压缩成一个节点。
+
+当新的请求到来，如果它的前缀和已有请求完全一致，就直接共享这一段 KV Cache；
+如果在某个 token 处出现分歧，基数树就会**动态拆分节点**，让公共部分继续共享，而不同部分各自分支。
+
+这种机制能最大化 Prefix + Generate 阶段 KV Cache 的重用，提升吞吐和显存效率。
+
+### 83.2 vLLM的Hash RadixAttention（自动前缀缓存）与SGLang的RadixAttention在实现原理、工程设计和性能表现上的核心区别总结？
+
+![](Figure/Interview/83_2.png)
+
+### 84. 如何推导Radix attention 或者shared prefix decomposing attention的正确性？
+步骤：
+1. new_q_len * cached_kv; apply Flash attention
+2. new_q_len * new_kv; apply Flash attention
+3. reduce or merge states(把1和2算出来的hidden state reduce一下)
+
+![](Figure/Interview/84.png)
+
+可以看到方程8就是对应的reduce操作，记住就好。
+Chunk attention:
+
+[Hydragen: High-Throughput LLM Inference with Shared Prefixes](https://arxiv.org/pdf/2402.05099)
+
+[Attention States and Recursive Attention](https://docs.flashinfer.ai/tutorials/recursive_attention.html)
+
+
+### 85. 企业内部知识查询是一个典型的document QA任务，在这种场景下，当两个请求（query）同时发起查询，你认为哪种attention 计算方法性能最高？
+vLLM/SGlang针对不同的任务有很多的back end，需要选择一个：
+
+A.一次multi query attention （右下图）
+
+B.两次single query attention （右下图第三行只有一个蓝色方块的情况）
+
+**C.一次multi query attention+两次single query attention，而后把结果reduce or merge**
+![](Figure/Interview/85.png)
+
+答案：C，documentQA本身就有一个内置的prompt，而两个请求又有各自自己的prompt，因此我们需要先用一次MQA将公有的第一个prompt计算出来，然后在使用两次SQA分别计算各自独有的prompt，最后把结果reduce or merge。
+
+提示：此种场景又称batch shared prefix kv cache，此处**attention kernel又叫cascade inference kernel(flashinfer) or 深度为2的radix attention(sglang)**
+
+
+### 86. vLLM有什么不足？
+
+**曾经存在很严重的cpu开销问题** 现在解决一些了。
+
+[Deep dive vLLM和SGLang推理框架的CPU开销](https://mp.weixin.qq.com/s/ZH6vzQFg9NNoPRyTgtdY4Q?token=474473637&lang=zh_CN)
+
+nsight-system/torchprof查看:
+![](Figure/Interview/86.png)
+
+红框内是GPU没有运行的时间。
+
+那么vLLM的cpu开销体现在哪里呢？主要是准备数据（红色和绿色）以及detokenize（粉色）。
+![](Figure/Interview/86_2.png)
+看起来这些操作是没法省的，那么如何优化呢？一个经典的思路就是我们可以在GPU运行的时候就做这些操作，以掩盖这些cpu开销。（下一题的SGlang就是这么做的）
+
+### 87. SGlang是如何解决vLLM的cpu开销问题的？
+
+![](Figure/Interview/87.png)
+
+1.总体来看，大模型推理都可以分为三步：a.从tokenizer进程（tokenize manager里面）接受过来的请求、b.step forward、c.push result到detoken
+
+**SGlang将这三步放在三个进程中，以实现异步执行。**（依赖关系怎么办呢？使用cpu的进程同步就好。比如当拿到tokenizer的结果后，forward的进程立刻收到同步然后开始执行forward。）
+
+2.进一步讲step forward内部，每个step的forward之间仍然会进行复杂的batch schedule策略（上图的绿色部分），包括计算此step的batch size、分配kv cache，这部分schedule策略在内部没有和model forward异步起来，**依赖在于scheduler需要token id，这依赖于上一个step的fwd结果**，但是scheduler（*它不需要确定的知道tokenid是什么，只需要知道token得数量即可*）真正需要的token数量，而我们decoder阶段的token为1，这完全可以提前就知道，不需要等待上一个step出现结果，那么由此**scheduler和model forward就可以并行**（下图的Overlapped scheduler）
+![](Figure/Interview/87_1.png)
+![](Figure/Interview/87_2.png)
+<!-- ![](Figure/Interview/87_3.png)
+![](Figure/Interview/87_4.png) -->
+
+### 88. 为什么模型吞吐随batchsize的增大而增大？
+1. **并行计算效率提升**
+- 增大Batch Size会让每个计算单元（CUDA Core/Tensor Core）处理更多数据，减少空闲周期。
+  - 示例：若Batch Size=1且处于decode阶段，GPU计算单元可能只有10%被利用（这里计算可能只用到CUDA core）；Batch Size=32时，利用率可达80%+（这里由于size变大，计算会用到tensor core，峰值算力更大）。
+- GEMM在较大尺寸时能更高效利用硬件：
+  - 小矩阵：
+    - 计算/内存访问比低，global memory访存延迟/显存带宽成为瓶颈
+    - 不易满足mma尺寸要求，ep. M16n8k16（最低的要求，如果达不到只能老老实实去用FMA了）
+  - 大矩阵：计算/内存访问比高，算力成为瓶颈。
+    - 轻易满足mma尺寸要求，充分利用tensorcore算力
+2. **kernel launch开销分摊**
+- 示例：Kernel启动耗时10μs，Batch=1时每样本10μs；Batch=128时每样本仅0.08μs。
+
+### 89. 为什么降低kv cache这么重要？
+众所周知，一般情况下LLM的推理都是在GPU上进行，**单张GPU的显存是有限的**，一部分我们要用来存放模型的参数和前向计算的中间激活值，；另外一部分我们要用来存放KV Cache，这部分在推理过程中是动态增长的，当Context长度足够长时，它的大小就会占主导地位，可能超出一张卡甚至一台机（8张卡）的总显存量。
+
+在GPU上部署模型的原则是：**能一张卡部署的，就不要跨多张卡；能一台机部署的，就不要跨多台机**。这是因为“卡内通信带宽 > 卡间通信带宽 > 机间通信带宽”，由于**“木桶效应”**，模型部署时跨的设备越多，受设备间通信带宽的“拖累”就越大，事实上即便是单卡H100内SRAM与HBM的带宽已经达到了3TB/s，但对于Short Context来说这个速度依然还是推理的瓶颈，更不用说更慢的卡间、机间通信了。
+
+所以，**减少KV Cache的目的就是要实现在更少的设备上推理更长的Context**，或者**在相同的Context长度下让推理的batch size更大**，从而实现更快的推理速度或者更大的吞吐总量。从而为了实现更低的推理成本。
 
 
 
+### 90. 大模型推理引擎通常由哪些部分组成？与非大模型的推理引擎的区别？
+Sglang：
+用户端 + 服务端（Tokenlize，Forward，Detokenize）
+
+![](Figure/Interview/90.png)
+
+TVM等非大模型推理引擎/编译器：
+
+它们要接收不同类型的小模型，复杂性会好很多。
+
+通过一系列Relay Passes去优化图；通过AutoTVM来控制图上的一些算子；图优化完成后再降级为更低层次的表示，然后还有一些passes处理低层次的表示。然后再进行代码生成（Target translation）来生成runtime类型的IR，被一些LLVM/TensorRT等编译器接收。
 
 
-
-
-
-
+![](Figure/Interview/90_1.png)
 
 
 
