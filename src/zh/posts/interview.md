@@ -1652,7 +1652,43 @@ void softmax(float* input, float* output, int row, int cols) {
 1. Reduce
 
 ```cpp
+__global__ void reduce_v1(float* input, float* output, int N) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    __shared__ float s_data[32];
+    if(idx < N){
+        s_data[tid] = input[idx];
+    }else{
+        s_data[tid] = 0;
+    }
+    __syncthreads();
+    for(int step = 1; step < blockDim.x; step *=2){
+        if(tid % (2*step) == 0){
+            s_data[tid] += s_data[tid + step];
+        }
+        __syncthreads();
+    }
 
+    if(tidx == 0) d_output[blockIdx.x] = s_data[0];
+}
+
+__global__ void reduce_v2(float* input, float* output, int N) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    __shared__ float s_data[32];
+    if(idx < N){
+        s_data[tid] = input[idx];
+    }else{
+        s_data[tid] = 0;
+    }
+    __syncthreads();
+    for(int step = blockDim.x/2; step >= 1; step /=2){ //这里和
+        if(tid < step){ //这里不同
+            s_data[tid] += s_data[tid + step];
+        }
+        __syncthreads();
+    }
+
+    if(tidx == 0) d_output[blockIdx.x] = s_data[0];
+}
 ```
 2. Transpose
 
@@ -1678,8 +1714,20 @@ __global__ void transpose(float* input, float* output) {
         }
     }
 }
+
+__global__ void transpose(float* input, float* output) {
+    __shared__ float s_data[32][33];//padding法解决bank conflict
+}
+
+__global__ void transpose(float* input, float* output) {
+    
+    s_data[tidx][tidy^tidx] = input[row * N + col];
+    output[newrow * M + newcol] = s_data[tidy][tidx^tidy];//swizzling法解决bank conflict
+}
 ```
 3. Softmax
 ![](Figure/Interview/94_2.png)
+
+
 
 4. GEMM
