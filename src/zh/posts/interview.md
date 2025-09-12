@@ -565,6 +565,57 @@ int main() {
 
 **LRU的Leetcode一定要做，考的概率很大**
 
+```cpp
+#include <iostream>
+#include <unordered_map>
+#include <list>
+
+using namespace std;
+
+class LRU{
+private:
+    int cap;
+    unordered_map<int, pair<int, list<int>::interator>> cache; //<key, <value, list->pointer> > 哈希表删除：key，增加：<value, list->pointer>
+    list<int> l; //<key>   list删除：pointer，增加：key
+public:
+    LRUcache(int capacity){
+        this->cap = capacity;
+    }
+
+    int get(int key){
+        if(cache.find(key) == cache.end()){
+            return -1;
+        }else{
+            int value = cache[key].first;
+            makeRecent(key);
+            return value;
+        }
+    }
+
+    void put(int key, int value){
+        if(cache.find(key) != cache.end()){
+            list* pointer = cache[key].second;//list删除是要删除它的pointer，而不是key，与下面的哈希表不同
+            l.erase(pointer);
+        }else{
+            if(l.size() >= this->cap){
+                cache.erase(l.front()); //哈希表的删除是要删除key，而不是value; 这里要删除的key是链表头部的那个key值而不是这个函数传进来的key！！！！！
+                l.pop_front();
+            }
+        }
+        l.push_back(key);
+        cache[key] = {value, prev(l.end())};
+    }
+
+    void makeRecent(int key){
+        int value = cache[key].first;
+        list* pointer = cache[key].second;
+        l.erase(pointer);
+        l.push_back(key);
+        cache[key] = {value, prev(l.end())};
+    }
+}
+```
+
 ### 17. 进程和线程的区别？
 **进程是操作系统资源分配的基本单位，线程是CPU调度的基本单位。**
 - 进程每个进程有自己独立的虚拟地址空间、代码段、数据段和堆栈。切换开销大、通信复杂，但更稳定，适合高隔离场景；
