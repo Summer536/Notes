@@ -16,8 +16,86 @@ isOriginal: true
 记录一些面试问题。
 
 <!-- more -->
+## 小米-大模型推理优化工程师（一面，09.12）
 
-## 一. 深信服科技
+### 1. 有没有了解过QNN推理引擎？
+QNN (Qualcomm Neural Network) 主要是基于一些 Qualcomm Snapdragon 平台（CPU / GPU / DSP / NPU）的一个Ai推理引擎，执行一些轻量级深度学习模型（大模型执行不了）。
+
+### 2. 计算流体力学会用到高性能计算的东西吗？
+是的，在CFD中用到的HPC内容主要有：**并行计算**，**稀疏矩阵运算优化**，**分布式通信与负载均衡**，其实这个专业和数学也没啥区别了，天天解方程。
+
+**与大模型推理相比这个HPC的区别在哪里？**
+1. 计算模式不同：**PDE + 高精度**， 大模型是**张量、矩阵 + 低精度**
+
+2. 数据依赖不同：CFD 的**时间步长更新通常是强依赖**的，前一步必须算完才能算下一步，难以完全解耦。大模型推理里，Prefill 阶段可以大批量并行，但 Decode 阶段是自回归的，计算依赖不同。
+
+3. 优化重点不同：CFD 优化常在稀疏矩阵运算、迭代收敛效率和通信负载上。大模型推理优化更关注矩阵乘法效率（GEMM + Tensor Core）、KV Cache管理、量化/压缩技术。
+
+### 3. 项目中的推理框架的整体架构和思路是什么？
+整体架构是以：CUDA内核层 + Prefill/Decoder 和FFN层 + model层，三层嵌套的。
+1. cuda内核层：embedding、linear、RMSnorm、softmax、RoPE、SwiGLU这些底层cuda kernel，并且采用了算子融合、向量化读取等手段进行内核优化；
+2. 神经网络层：Prefill层是以attention计算+mask部分组成； Decoder layer是比前者少了一个mask； FFN layer的话就是一个gate up、Swiglu以及down linear投影输出；
+3. model层：输入处理（Tokenizer + Embedding） + if firsttoken：Prefill else decoder + 输出处理（LM头线性变换 + TopK采样）
+4. 权重处理：权重只加载一次，在整个推理过程中复用；通过指针传递到各个layer中，然后再传递到各个kernel中使用。
+
+### 4. 项目中的分级内存管理策略是什么？
+双池设计：大内存池(>1MB)和小内存池(≤1MB)分别管理
+
+延迟释放：释放的内存不立即归还OS，而是标记为可用
+
+碎片管理：通过FreeSize跟踪小内存池碎片，超过1GB时清理
+
+**哪些会用到大内存池，哪些会用到小内存池？**
+
+大： kvcache、QKV weight、
+
+小：计算结果的一些中间值
+
+### 5. 项目中针对kv cache是如何做内存管理的呢？
+**预分配策略**：KV cache在模型初始化时一次性分配整个max_seq_len的空间（因此都在大内存池中）
+
+内存复用：同一个cache缓冲区在整个推理过程中重复使用
+![](Figure/Interview/T_5.png)
+
+
+**kv cache如何做更新的呢？**
+
+先计算指针的偏移量；
+
+上下文阶段：一次性填充整个输入序列的KV值
+
+生成阶段：增量更新，每次只更新一个token位置的KV值
+
+### 6. 框架里做了哪些算子融合？
+QKV bais + RoPE, attention计算的融合, FFN layer里面的Gate和up linear等等
+
+**RoPE 为什么没有实现融合**
+LLaMA2 的RoPE问题，它以64为单位进行的RoPE，没法进行向量化读取？
+
+### 7. GEMM的优化策略以及如何解决bank conflict？
+
+share mem + float4 + 双缓冲 + swlizzing（解决bank conflict）
+
+### 8. 实习经历的量化，做激活值的量化吗？
+在实习经历里，我主要做的是 权重量化（Weight Quantization）
+
+因为激活值比较难量化：动态范围大，异常值多、精度敏感性强，比较难做优化。
+
+### 9. nsight-compute和 nsight-system掌握程序如何？平时如何使用？
+**NCU**：
+
+入门：能用 ncu --metrics 收集基本指标，如 FLOPS、内存带宽、warp 效率。
+
+中级：会分析 occupancy、shared memory bank conflict、warp divergence 等问题，并能够定位 kernel 瓶颈。
+
+**NSYS**
+
+入门：能够捕获 timeline，看到 kernel 启动、数据传输、CPU-GPU 调度。
+
+中级：分析 host 与 device 的 overlap，识别 kernel launch overhead、数据拷贝瓶颈。
+
+
+## 深信服科技
 
 ### 1. HR电话(25.06.03 09:00)
 1. 你们实验室是做这个方向的吗？
