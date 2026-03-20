@@ -12,7 +12,6 @@ category:
 
 ## 笔记列表
 
-- [Examination](https://summer536.github.io/Notes/zh/posts/Examination.html) - 秋招笔试记录
 - [Interview](https://https://summer536.github.io/Notes/zh/posts/interview.html) - 笔试面试经典题
 - [Deepseek MLA](https://summer536.github.io/Notes/zh/posts/Deepseek_MLA.html) - MLA机制及其实现方法介绍
 - [Step3 AF](https://summer536.github.io/Notes/zh/posts/Step3_AF.html) - Step3 AF分离推理系统 vs. deepseek EP推理系统
