@@ -22,6 +22,7 @@ export const zhNavbar = navbar([
     icon: "profile",
     link: "/zh/about/",
   },
+  
   // {
   //   text: "博文",
   //   icon: "pen-to-square",
