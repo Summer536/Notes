@@ -12,7 +12,7 @@ export default hopeTheme({
   },
 
   // logo: "/public/YQ_logo1.png",
-  logo: "/public/YQ_logo1.png",
+  logo: "/YQ_logo1.png",
 
 
   repo: "your-username/your-repo",

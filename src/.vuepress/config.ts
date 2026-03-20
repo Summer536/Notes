@@ -5,6 +5,12 @@ import theme from "./theme.js";
 export default defineUserConfig({
   base: "/Notes/",
 
+  head: [
+    ["link", { rel: "icon", href: "/Notes/favicon.ico" }],
+    ["link", { rel: "shortcut icon", href: "/Notes/favicon.ico" }],
+    ["link", { rel: "apple-touch-icon", href: "/Notes/favicon.ico" }],
+  ],
+
   locales: {
     "/": {
       lang: "en-US",
