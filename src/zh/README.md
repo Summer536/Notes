@@ -14,15 +14,15 @@ header:
   display: true
   text-align: center
 projects:
-  - icon: book
-    name: 八股文总结
-    desc: 系统性整理的面试知识点
-    link: /zh/interview/
-
   - icon: folder-open
     name: 学习笔记
     desc: 日常技术学习笔记
     link: /zh/notes/
+
+  - icon: book
+    name: 论文浅读
+    desc: 介绍一些经典的论文
+    link: /zh/interview/
 
   - icon: code
     name: 项目实践

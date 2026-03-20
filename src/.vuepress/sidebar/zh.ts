@@ -4,23 +4,19 @@ export const zhSidebar = sidebar({
   "/zh/": [
     "",
     {
-      text: "如何使用",
-      icon: "laptop-code",
-      prefix: "demo/",
-      link: "https://github.com/Summer536/Notes",
-      children: "structure",
+      text: "学习笔记",
+      icon: "folder-open",
+      link: "/zh/notes/",
     },
     {
-      text: "文章",
+      text: "论文浅读",
       icon: "book",
-      prefix: "posts/",
-      children: "structure",
+      link: "/zh/interview/",
     },
-    "intro",
     {
-      text: "幻灯片",
-      icon: "person-chalkboard",
-      link: "https://ecosystem.vuejs.press/zh/plugins/markdown/revealjs/demo.html",
+      text: "项目实践",
+      icon: "code",
+      link: "/zh/projects/",
     },
   ],
 });
