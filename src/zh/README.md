@@ -16,18 +16,13 @@ header:
 projects:
   - icon: folder-open
     name: 学习笔记
-    desc: 日常技术学习笔记
+    desc: 按 AI infra、CUDA、基础知识分类整理的技术笔记
     link: /zh/notes/
 
-  - icon: book
-    name: 论文浅读
-    desc: 介绍一些经典的论文
-    link: /zh/interview/
-
   - icon: code
-    name: 项目实践
-    desc: 个人项目与实践经验
-    link: /zh/projects/
+    name: Book
+    desc: 随记一些读书感悟
+    link: /zh/book/
 
   - icon: profile
     name: 关于我

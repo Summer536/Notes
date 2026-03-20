@@ -45,7 +45,7 @@ KV cache有它独特的地方：**它在解码时会动态变化，并且输出�
 
 首先，**现存系统会存在大量内部(internal)和外部(external)碎片(fragment)**。为了把KV cache存放在连续的空间，这些系统会为一个请求提前分配(pre-allocate)最大可能长度（max seq len）的cache，这会导致内部碎片，因为实际长度可能远远小于最大长度。而这些内部内存碎片白白浪费了，只有等等这个请求结束才能释放。而且即使我们可以提前预料到生成结果的长度，比如512。我们在一开始(比较解码第一个输出token)就预留了512个token的cache空间，这些空间也不能被其它请求使用。此外，**由于每个输入请求的长度不同，也会导致大量的外部碎片**。下图显示了在现存系统中，只有20.4% - 38.2%的KV cache内存是真正被用于存储有用的token。
 
-![](Figure/pagedattention/1.png)
+![](../../posts/Figure/pagedattention/1.png)
 
 那么，对症下药，解决办法主要集中在两个方面：
 
@@ -57,7 +57,7 @@ PagedAttention 受到了操作系统的虚拟内存和分页机制的启发，�
 
 操作系统把内存划分成固定大小的分页(page)，一个进程的虚拟内存就是一系列分页。在用户(进程)看来，它的地址空间是连续的，但实际不然。操作系统会把每个分页和物理的分页建立映射。比如一个页面32k，进程的虚拟内存是320k(实际当然远大于此，比如4GB)，也就是10个分页。目前进程在使用前3个页面，那么操作系统就会把这3个页面真正的加载到物理内存里，剩下那7个页面可能缓存在磁盘里。当进程访问第4个页面时，会发生缺页中断，然后去缓存里找到这个页面放到内存，并且建立虚拟内存和物理内存的映射。如果物理内存不够用了，操作系统也会把暂时不用的分页换到磁盘缓存里。
 
-![](Figure/pagedattention/6.png)
+![](../../posts/Figure/pagedattention/6.png)
 
 
 
@@ -72,7 +72,7 @@ PagedAttention 受到了操作系统的虚拟内存和分页机制的启发，�
 
 使用 PagedAttention 的请求的生成过程如下图所示：
 
-![](Figure/pagedattention/pagedattention_workflow.gif)
+![](../../posts/Figure/pagedattention/pagedattention_workflow.gif)
 
 这种方式带来的**内存浪费仅出现在序列的最后一个块中**，实际中带来了近乎最优的内存使用，浪费不到 4%。这种内存效率的提升大大提高了系统能够同时处理的序列数量，增加了 GPU 的利用率，并显著提升了处理吞吐量。
 
@@ -82,19 +82,19 @@ PagedAttention 这种结构类似于操作系统中的虚拟内存，其中将�
 
 上面的例子演示的是一个请求的解码过程。**实际的情况是每一步vLLM都会从后续队列里选择一些请求来batching，并且为新的逻辑block分配物理block。然后把多个请求的prompt和最近生成的tokens拼成一个大的sequence给到vLLM的kernel**(GPU的kernel)。这个实现了PagedAttention算法的kernel会访问这些逻辑block的cache并且为每一个请求都生成一个新的token，并且把这一步的KV cache也保存到物理block里。如果block大小越大，那么这个kernel读取的次数就会越小，但是内部碎片也会越大。
 
-![](Figure/pagedattention/2.png)
+![](../../posts/Figure/pagedattention/2.png)
 
 在上图的例子里，有两个请求。我们可以看到**两个逻辑相邻的block物理上并不需要相邻。相反，两个请求最后一个物理块(3和2)是相邻的**，这反而可以让kernel的效率更高（因为kernel的读取只是最后生成的Token，之前的不管，这些不同序列生成的最后Token对应的不同Block（如上图的Block2和Block3）在内存上连续的）。
 
 ### 2. PagedAttention的内存共享优势
 PagedAttention 借助块表实现了灵活的内存共享机制。类似于进程间共享物理页面的方式，PagedAttention 中的不同序列可以通过将各自的逻辑块映射到相同的物理块来共享内存资源。为了确保共享的安全性，PagedAttention 跟踪物理块的引用次数，并采用**写时复制（copy-on-write）策略**以防止数据冲突。
 
-![](Figure/pagedattention/multiple_outputs.gif)
+![](../../posts/Figure/pagedattention/multiple_outputs.gif)
 
 #### 并行采样(Parallel sampling)
 在代码生成等常见，为了结果的多样性，对于同一个prompt，我们可能会在每一步都随机采样多个(而不是一个)token。
 
-![](Figure/pagedattention/3.png)
+![](../../posts/Figure/pagedattention/3.png)
 
 上图是一个例子，由于**两个结果的prompt是相同的，因此KV cache可以共享**。为了实现共享，我们在block table里的每个block里增加一个引用计数，比如这里的第7个物理block和第1个物理block都映射到两个逻辑block。现在假设第1个sample先执行，那么它需要在物理block1写入token “father”，因为这个物理block被多于1个人用到，所以vLLM把block1复制一份到物理block3，然后修改sample1的映射为block3，然后再把”father”的cache写入，同时减少block1的引用计数。接着第2个sample执行，这个时候block1的引用计数为1，也就是它独享，所以可以放心写入。这就是所谓的Copy On Write机制——也就是多个使用者共享一个资源，**大家可以共享读，但是如果某人要写，那么它就需要Copy一份，然后在它自己的那份上修改**。
 
@@ -102,7 +102,7 @@ PagedAttention 借助块表实现了灵活的内存共享机制。类似于进�
 
 #### beam search
 beam search是在每一个时刻都保留k个(有时候k会变，比如topp，但是不影响原理)最优路径。比如下图：
-![](Figure/pagedattention/4.png)
+![](../../posts/Figure/pagedattention/4.png)
 
 这里beam size是2，也就是每次保留最好的两条路径。一开始的prompt是相同的，假设是block 0，接着它展开为block 1和block 2，接着展开为3和4，这几步只有2个候选路径，没啥好说。接着block 3展开为block 567，block 4展开为block8，最优的是block 6和7。这个时候我们要**保留路径6和7的KV cache，我们发现它们的路径有很大一部分是重合的(block 013)**。
 
@@ -111,7 +111,7 @@ beam search是在每一个时刻都保留k个(有时候k会变，比如topp，�
 #### 共享前缀
 在很多应用中，比如In-context learning，我们会增加很长的few-shot examples。比如：
 
-![](Figure/pagedattention/5.png)
+![](../../posts/Figure/pagedattention/5.png)
 上面是一个机器翻译的例子，在input之前有很长的前缀。另外包括chatbot，我们也会设置system角色的prompt。这些都是可以共享的。
 
 

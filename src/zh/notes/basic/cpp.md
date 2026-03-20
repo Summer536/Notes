@@ -48,7 +48,7 @@ unsigned char, unsigned short, unsigned int, unsigned long, unsigned long long
 1. 基本用法：const修饰变量，表示该变量不可修改。
 2. - 常量指针（底层const；指向常量的指针）：const int *p = &a; 表示p指向的值不可修改，但p可以指向其他地址。
     - 指针常量（顶层const；指针是一个常量）：int *const p = &a; 表示p指向的值可以修改，但p不能指向其他地址。
-![](Figure/cpp/const.png)
+![](../../posts/Figure/cpp/const.png)
 
 3. 常量引用：const int &a = 10; 表示引用的值是常量，不能通过引用修改。
 4. 常量成员函数，表示该函数不会修改对象的成员变量，允许const对象调用。
@@ -118,7 +118,7 @@ while (flag == 0) {
     // 等待 flag 被外部设为 1
 }
 ```
-![](Figure/cpp/volatile.png)
+![](../../posts/Figure/cpp/volatile.png)
 
 
 ### 6. Static
@@ -144,7 +144,7 @@ while (flag == 0) {
     ```
 4. 静态局部变量：在函数内部使用static修饰的变量为静态局部变量，它的生命周期为程序运行期间，但它只对函数内可见。
 
-![](Figure/cpp/static.png)
+![](../../posts/Figure/cpp/static.png)
 
 ### 7. Static静态局部变量和局部变量的区别
 1. 局部变量（Local Variable）
@@ -164,7 +164,7 @@ void func() {
 }
 ```
 
-![](Figure/cpp/staticlocal.png)
+![](../../posts/Figure/cpp/staticlocal.png)
 
 ### 8. define、typedef（using）、inline的区别
 1. define：宏定义，是预处理器处理的，在编译前会进行文本替换，没有类型检查，可能会导致一些意想不到的问题。
@@ -190,7 +190,7 @@ void func() {
         return a + b;
     }
     ```
-![](Figure/cpp/define.png)
+![](../../posts/Figure/cpp/define.png)
 
 ### 9. new和malloc函数区别：
 1. **new（+delete） 是 C++ 运算符，负责内存分配和构造对象，语义完整且类型安全，底层可能调用类似 malloc 的机制；**
@@ -216,7 +216,7 @@ void func() {
     int* p2 = (int*)malloc(10 * sizeof(int));    // 分配一个 int 数组
     MyClass* obj = (MyClass*)malloc(sizeof(MyClass)); // 分配内存，但未调用构造函数
     ```
-![](Figure/cpp/new.png)
+![](../../posts/Figure/cpp/new.png)
 
 ### 10. extern
 **extern 是 C++ 中用于声明变量或函数在别处定义 的关键字，告诉编译器“这个符号的定义在其他地方，不要报错”。** 它是实现跨文件访问和 C/C++ 混合编程的重要机制
@@ -360,11 +360,11 @@ counter++; // 这是一个原子操作，线程安全
 
 **struct结构体中默认是public继承，class类中默认是private继承。**
 
-![](Figure/cpp/class.png)
+![](../../posts/Figure/cpp/class.png)
 
 ### 15.C++中四种强制类型转换
 在 C++ 中，**强制类型转换（Cast）** 用于显式地将一种类型的值转换为另一种类型。与 C 风格的 (type)value 转换相比，C++ 提供了更安全、语义更清晰的四种标准强制类型转换操作符：
-![](Figure/cpp/cast.png)
+![](../../posts/Figure/cpp/cast.png)
 
 **上行转换：把派生类（子类）的指针或引用转换成基类（父类）表示**
 
@@ -424,7 +424,7 @@ dynamic_cast 的限制：
 ## 二. C++的内存管理
 
 ### 1.C++内存分区
-![](Figure/cpp/neicun.png)
+![](../../posts/Figure/cpp/neicun.png)
 
 **什么是高地址低地址？**
 
@@ -459,7 +459,7 @@ dynamic_cast 的限制：
 堆向上长，栈往下掉；
 堆慢且大，栈快又小；
 函数调用靠栈，动态分配用堆。
-![](Figure/cpp/stackandheap.png)
+![](../../posts/Figure/cpp/stackandheap.png)
 
 ### 3.内存泄露是什么，如何避免内存泄露？
 1. 什么是内存泄露？
@@ -526,7 +526,7 @@ dynamic_cast 的限制：
     核心思想是：利用对象生命周期控制资源的生命周期（RAII 原则） 。 
 
 2. 智能指针的种类
-    ![](Figure/cpp/ptr.png)
+    ![](../../posts/Figure/cpp/ptr.png)
     (1) unique_ptr：表示对对象的**独占所有权** ；**不允许拷贝构造和赋值操作**；支持移动语义（move semantics）；在离开作用域时自动调用析构函数并释放资源；
 
     ```cpp
@@ -660,7 +660,7 @@ dynamic_cast 的限制：
 ### 6. 野指针和悬浮指针的区别？
 悬空指针 是曾经指向合法对象，但该对象已被释放，指针未置空。 简单来说它是野指针的一种具体形式。
 
-![](Figure/cpp/wildptr.png)
+![](../../posts/Figure/cpp/wildptr.png)
 
 ### 7. 内存对齐？
 **内存对齐是指数据在内存中的存放地址是某个特定值的整数倍（如 4、8、16 字节等），以提高 CPU 访问效率并避免硬件异常。**
@@ -799,7 +799,7 @@ int main() {
         ```
     - 多级继承：一个子类有多个父类，每个父类又有父类；
     - 菱形继承：一个子类有两个父类，其中一个父类有另一个父类；
-    ![](Figure/cpp/lingxing.png)
+    ![](../../posts/Figure/cpp/lingxing.png)
 
 2. **多重继承问题：**
 多重继承可能引入一些问题，如**菱形继承问题**，比如当一个类同时继承了两个拥有相同基类的类，而最终的派生类又同时继承了这两个类时，可能导致二义性和代码设计上的复杂性。为了解决这些问题，C++提供了**虚继承**，通过在继承声明中使用virtual关键字，可以避免在派生类中生成多个基类的实例，从而解决了菱形继承带来的二义性。
@@ -830,7 +830,7 @@ int main() {
 
     子类不能访问父类的 private 成员，但可以访问父类的 protected 成员。
 
-    ![](Figure/cpp/jichengquanxian.png)
+    ![](../../posts/Figure/cpp/jichengquanxian.png)
 
 
 **🌈 C++ 多态（Polymorphism）**
@@ -959,7 +959,7 @@ public:
 ```
 
 ### 3. 成员函数/成员变量/静态成员函数/静态成员变量的区别
-![](Figure/cpp/jingtaichengyuan.png)
+![](../../posts/Figure/cpp/jingtaichengyuan.png)
 1. **成员函数**
 - 成员函数可以分为普通成员函数和静态成员函数。
 - 普通成员函数使用对象调用，可以访问对象的成员变量。

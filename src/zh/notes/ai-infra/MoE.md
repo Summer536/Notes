@@ -23,7 +23,7 @@ isOriginal: true
 
 首先我需要给出一个概念：所谓MoE架构其实就是将传统Transformer架构的FFN layer 替换为MoE layer，其中每个MoE-Layer由一个门控(Gate)和若干个专家(experts)组成，每个专家都是一个小的神经网络，专家之间通过门控机制（Gate）来决定Token应该被哪个专家处理。
 
-![](Figure/MoE/moe1.jpg)
+![](../../posts/Figure/MoE/moe1.jpg)
 
 我们从下往上看：
 1. Token经过MHA layer后，做为MoE layer的输入；
@@ -117,7 +117,7 @@ $P_0'$ 和 $P_1'$ 是一种权重（weight），该 token 过 expert0 和 expert
 
 （为了看起来方便这里再放一下这个图吧）
 
-![](Figure/MoE/moe1.jpg)
+![](../../posts/Figure/MoE/moe1.jpg)
 
 #### 2.2.3 Auxiliary Loss(尽量保证负载均衡)
 
@@ -136,7 +136,7 @@ $$
 
 ### 2.3 Expert负载均衡(计算与通信)
 
-![](Figure/MoE/moe2.png)
+![](../../posts/Figure/MoE/moe2.png)
 
 我们上述的优化方法，**只能“缓解”负载不均，而不能保证解决负载不均**。也就是说，存在一些Expert，它的Expert buffer没有填满，这可怎么办呢？
 

@@ -34,18 +34,18 @@ P = \text{softmax}(S) \in \mathbb{R}^{N \times N}, \quad
 O = P V \in \mathbb{R}^{N \times d}.
 \end{align*}
 $$
-![](Figure/flashattention/FAV1_0.png)
+![](../../posts/Figure/flashattention/FAV1_0.png)
 标准的 Attention 运算大致可以描述为以下三个步骤：
 - 将 Q,K 矩阵以块的形式从 HBM 中加载到 SRAM 中，计算 S=QK ，将 S 写入到 HBM 中。
 - 将 S 矩阵从 HBM 中加载到 SRAM 中，计算 P=Softmax(S) ，将 P 写入到 HBM 中。
 - 将 P,V 矩阵以块的形式从 HBM 中加载到 SRAM 中，计算 O=PV ，将 O 写入到 HBM 中。
 
-![](Figure/flashattention/FAV1_2.png)
+![](../../posts/Figure/flashattention/FAV1_2.png)
 
 self-attention 算子涉及到的和 HBM 数据传输过程如上图所示，很明显需要从 HBM 中读取 5 次，写入 HBM 3 次，HBM 访存量 $MAC = 4N^2 + 3Nd$，很明显标准注意力的 HBM 访问代价 $MAC$ 随序列长度增加呈二次方增长。
 
 而 self-attention 的计算量为 $4N^2d+N^2$，标准注意力算子的操作强度 $= \frac{4N^2d+N^2}{4N^2 + 3Nd}$。公式可看出，标准注意力算子是一个很明显的内存受限型算子。
-![](Figure/flashattention/MACandFlops.png)
+![](../../posts/Figure/flashattention/MACandFlops.png)
 
 ### 1.2 FAV1整体介绍
 
@@ -58,7 +58,7 @@ self-attention 算子涉及到的和 HBM 数据传输过程如上图所示，很
 
 2.在寄存器和shared memory复用数据做计算，而不是去HBM或显存上去读数据来计算，然而寄存器数量和shared memory (也就是图中的SRAM) 大小都有限，在左图的情况下，显然无法将softmax的结果存到这两个存储单元里面供下一个matmul复用，下一个matmul不得不去HBM或显存上读数据
 
-![](Figure/flashattention/FAV1_6.png)
+![](../../posts/Figure/flashattention/FAV1_6.png)
 
 #### 整体思想
 FAV1算法整体做到了如下的两部分：
@@ -71,60 +71,60 @@ $m_i$ 和 $d_i$ ，**FlashAttention-v1 基于它的思想更进一步，实现�
 
 ### 1.3 FAV1算法流程
 
-<!-- ![](Figure/flashattention/FAV1_1.png "FlashAttention Block Diagram") -->
+<!-- ![](../../posts/Figure/flashattention/FAV1_1.png "FlashAttention Block Diagram") -->
 <!-- <p align="center">
-  <img src="Figure/FA1.png" width="500" alt="核心思想"/>
+  <img src="../../posts/Figure/FA1.png" width="500" alt="核心思想"/>
 </p> -->
 Flashattention总体的算法流程图如下：
-![](Figure/flashattention/FAV1_5.png)
+![](../../posts/Figure/flashattention/FAV1_5.png)
 
 ---
 1. 设置块的行大小 $B_r = \frac{M}{4d}$，块的列大小为 $B_c = \min\left(\frac{M}{4d}, d\right)$ 。 $\min$ 函数的目的是防止块大小 $B_r \times B_c > M/4$，这样就无法把 4 个这样的块放到 SRAM 里，后面我们会看到为什么是 $4 \times B_r \times B_c$ 的块。
-![](Figure/flashattention/step1(1).png)
+![](../../posts/Figure/flashattention/step1(1).png)
 ---
 2. 我们把结果矩阵O初始化为零，后面会逐步把中间结果累加进去，所以零是合适的初始值。类似的是l(注意：对于每一行来说，它是一个标量，用于累加指数和，由于输出有N行，所以这里的l是长度为N的向量)。m用于记录每一行当前最大的值，所以也是长度为N，而-inf是求max的合适初始值。
-![](Figure/flashattention/step2.png)
+![](../../posts/Figure/flashattention/step2.png)
 ---
 3. 按照1中块的大小,对Q矩阵按照$B_r$切分成$𝐵𝑟×𝑑$的块，共$T_r$个，对K、V矩阵按照$B_c$切分成$𝐵c×𝑑$的块，共$T_c$个。
-![](Figure/flashattention/step3.png)
+![](../../posts/Figure/flashattention/step3.png)
 ---
 4. 根据前面的计算，结果矩阵$O$需要切分成$𝐵𝑟×𝑑$的块来存放中间结果。长度为$N$的$l$和$m$也要切分成$𝐵𝑟$个元素的块，用于存放这些行当前的指数累加值和当前最大值。
-![](Figure/flashattention/step4.png)
-![](Figure/flashattention/Tiling1.png)
-![](Figure/flashattention/tiling2.png)
+![](../../posts/Figure/flashattention/step4.png)
+![](../../posts/Figure/flashattention/Tiling1.png)
+![](../../posts/Figure/flashattention/tiling2.png)
 ---
 算法图
-![](Figure/flashattention/FAV1_9.png)
+![](../../posts/Figure/flashattention/FAV1_9.png)
 - 这个图展示了第5步开始的两层循环，**逻辑就是外层循环的下标 $j$ 就是循环 $K^T$ 和 $V$，而内存循环的下标就是循环 $Q$**。首先外层循环取出大小为 $d \times B_c$ 的 $K_j^T$ 和大小为 $B_c \times d$ 的 $V_j$，然后内层循环遍历整个 $Q$，比如当前是 $i$，也就是大小为 $B_r \times d$ 的 $Q_i$。我们就可以计算 $O = softmax(Q_i K_j^T V_j)$。不过要记住，这是部分的计算结果，所以我们要保存（更新）中间统计量 $m$ 和 $l$，等到 $j+1$ 的下一次循环时，内层循环还会再次遍历 $Q$，那个时候会计算 $O = softmax(Q_i K_{j+1}^T V_{j+1})$，然后把这次的结果合并到最终的结果里。包括统计量也需要同步更新。
 - **内循环一次 $Q_i$ 填满一次 $O、l、m$，共循环$T_r$次**
 - **外循环一次 $K_j^T、V_j$ 更新一次 $O、l、m$，共循环$T_c$次**
 - **整体循环结束$O、l、m$ 就是最终结果**
 ---
 5. 这是外层循环，j表示K和V的下标。
-![](Figure/flashattention/step5.png)
+![](../../posts/Figure/flashattention/step5.png)
 ---
 6. 我们首先把$K_j$和$V_j$从HBM加载到SRAM。根据前面的讨论，这会占据SRAM **约50%** 的存储。($B_c = \min\left(\frac{M}{4d}, d\right)$，如果$B_r = \frac{M}{4d}$，$2 \times B_r \times d = \frac{M}{2}$，正好占50%的SRAM; 如果$B_r = d$, 则说明$d < \frac{M}{4d}$，占SRAM会小于50%)
-![](Figure/flashattention/step6.png)
+![](../../posts/Figure/flashattention/step6.png)
 ---
 7. 内循环，i表示Q的下标。
-![](Figure/flashattention/step7.png)
+![](../../posts/Figure/flashattention/step7.png)
 ---
 8. 把$Q_i(B_r \times d)$和$O_i(B_r \times d)$加载进SRAM，同时把$l_i(B_r)$和$m_i(B_r)$也加载进去。$Q_i$和$O_i$会**占据50%的显存**。而$l_i$和$m_i$比较小，根据**论文作者的说法**可以放到寄存器里。
-![](Figure/flashattention/step8.png)
+![](../../posts/Figure/flashattention/step8.png)
 ---
 9. 计算分块矩阵$Q_i(B_r \times d)$和$K_j$的转置$(d \times B_c)$的乘积，得到score $S_{ij}(B_r \times B_c)$。
-![](Figure/flashattention/step9.png)
+![](../../posts/Figure/flashattention/step9.png)
 我们可以看到这里不需要计算$N \times N$的得分S矩阵，也就是不需要“materialized”。而只需要很小的$S_{ij}$。
 我们来看一个简单的示例：这里假设外层循环下标$j=3$，内层循环下标$i=2$，$N=25$，块大小是5（这里假设下标从1开始）。那么计算如下图所示：
 $$
 Q_i \cdot K_j^T = (B_r \times d) \cdot (d \times B_c) = B_r \times B_c
 $$
 
-![](Figure/flashattention/FAV1_10.png)
+![](../../posts/Figure/flashattention/FAV1_10.png)
 - 上图计算的是attention得分是Query为第6-10个token，Key是第11-15个token。
 ---
 10. 计算$\tilde{m}_{ij}$、$\tilde{l}_{ij}$和$\tilde{P}_{ij}$，使用前面的公式就可以简单的得出。
-![](Figure/flashattention/step10.png)
+![](../../posts/Figure/flashattention/step10.png)
 - $\tilde{m}_{ij}$是逐行计算的，找到每一行的最大值。
 - $\tilde{P}_{ij}$是逐点运算，把$S_{ij}$减去第$i$行的最大值$\tilde{m}_{ij}$（注意：这个下标$j$表示这是第$j$次计算，其实是一个值而不是向量），然后在计算指数。
 - $\tilde{l}_{ij}$也是逐行计算，把每一行的$\tilde{P}_{ij}$加起来。
@@ -132,16 +132,16 @@ $$
 ---
 11. 
 - $m_i$包含了在当前块（$j=3$）之前所有块的最大值（按行），比如上面的例子，$m_i$保存了$j=1$和$j=2$（图中的绿色块）块第6~10行的最大值。而$\tilde{m}_{ij}$是上一步得到的当前块（黄色）的最大值。因此取它们两者的最大值就得到前3个块（绿色加黄色块共15列）的最大值。
-- $l_i^{new}$的计算也是类似的，只不过求和前需要用当前的$e^{-m_i^{new}}$修正，具体可参考[Naive -> Safe -> Online Softmax](https://summer536.github.io/Notes/zh/posts/softmax.html)。
-![](Figure/flashattention/step11.png)
-![](Figure/flashattention/FAV1_11.png)
+- $l_i^{new}$的计算也是类似的，只不过求和前需要用当前的$e^{-m_i^{new}}$修正，具体可参考[Naive -> Safe -> Online Softmax](https://summer536.github.io/Notes/zh/notes/ai-infra/softmax.html)。
+![](../../posts/Figure/flashattention/step11.png)
+![](../../posts/Figure/flashattention/FAV1_11.png)
 
 ---
 12. 这里先介绍一下$diag(l_i)$，它是一个对角矩阵，对角线上的元素是$l_i$。(diag( )将一个$N*1$的向量变成$N*N$的对角矩阵, 如下图左侧矩阵)为什么要搞出这么复杂的东西呢？目的就是把前面我们更新l的公式能写成矩阵乘法的形式，这样才能在GPU上高效计算。
-![](Figure/flashattention/FAV1_12.png)
-![](Figure/flashattention/FAV1_13.png)
+![](../../posts/Figure/flashattention/FAV1_12.png)
+![](../../posts/Figure/flashattention/FAV1_13.png)
 
-![](Figure/flashattention/step12.png)
+![](../../posts/Figure/flashattention/step12.png)
 第12步公式的**绿色部分是更新当前块（$j=3$）之前的块（$j<3$）的 softmax 值**。
 
 我们回忆一下前面的例子：在一开始 $x^1 = [x_1 = 1, x_2 = 3]$，前两个数的 softmax 值是：
@@ -171,14 +171,14 @@ $$
 
 ---
 13. 把最新的累计量$l_r,m_r$写回HBM，注意它们的大小都是$B_r$。
-![](Figure/flashattention/step13.png)
+![](../../posts/Figure/flashattention/step13.png)
 
 ---
 14.-16. 结束循环，返回最终矩阵O。
 
 ### 1.4 FAV1算法的数学证明
 #### 1.4.1 Online Softmax
-这个证明略，详细内容见笔记[Naive -> Safe -> Online Softmax](https://summer536.github.io/Notes/zh/posts/softmax.html)
+这个证明略，详细内容见笔记[Naive -> Safe -> Online Softmax](https://summer536.github.io/Notes/zh/notes/ai-infra/softmax.html)
 
 #### 1.4.2 如何证明最终计算的O是正确的？
 我们用**数学归纳法**来证明算法的正确性，这里我们用外循环下标 $0 \leqslant j \leqslant T_c$ 来进行归纳。
@@ -189,7 +189,7 @@ $$
 
 $K_{:,j}$ 是 K 的前 $jB_c$ 行，所以 $K_{:,j}^T \in R^{d \times jB_c}$ 是 K 的前 $jB_c$ 列，所以 $S_{:,j}$ 是矩阵 Q 乘以 K 的前 $jB_c$ 列（行是 N）。而 $P_{:,j}$ 是前 $jB_c$ 列的 softmax，这正是我们之前算法外层循环。
 
-![](Figure/flashattention/FAV1_14.png)
+![](../../posts/Figure/flashattention/FAV1_14.png)
 
 令 $m^{(j)}, l^{(j)}, O^{(j)}$ 是算法在第 j 次外循环结束后 HBM 保存的累积量和 $\text{softmax}(QK^TV)$（部分正确）的结果。**注意：对于固定的 i，这些量在每次外循环 j 结束后都会被更新到 HBM 中，下一次外循环时又加载回来。** 我们想证明：第 j 次外循环结束后，HBM 中的值为：
 
@@ -443,7 +443,7 @@ FlashAttention-2是对FlashAttention-1的改进，在1的基础上性能可以�
 
 ### 2.2 FAV2算法详解
 总体算法流程如下图:
-![](Figure/flashattention/FAV2_2.png)
+![](../../posts/Figure/flashattention/FAV2_2.png)
 - 对调了v1版本的内外循环
 - （前向传播）在内循环中删除了矩阵$O$计算softmax的分母rescale步骤，仅在内循环结束后执行一次最终的rescale
 - （后向传播）不保存每一块的最大值 $m^{(j)}$ 和指数和 $\ell^{(j)}$ 用于反向传播。只存储 log sumexp，即 $L(j) = m^{(j)} + \log(\ell^{(j)})$。
@@ -488,11 +488,11 @@ FlashAttention-2是对FlashAttention-1的改进，在1的基础上性能可以�
 这一点主要考虑到batchsize*numheads小于SM个数的情况下，无法打满SM算力，此时seqlen一般都很大，需要对seqlen维度充分并行。**主要的实现就是在于FlashAttention-2将Q移到了外循环，KV移到了内循环，由于改进了算法使得warps之间不再需要相互通信去处理Q，所以外循环可以放在不同的block上。** 
 
 **前向传播** 我们将它们调度到不同的线程块上，这些线程块之间不需要通信。我们还像 FlashAttention 中那样在批量维度和头的数量维度上并行化。序列长度上的并行化提高了占用率（GPU 资源的使用率），当批量大小和头的数量较小时，这种并行化带来了加速。
-![](Figure/flashattention/FAV2_4.png)
+![](../../posts/Figure/flashattention/FAV2_4.png)
 
 
 #### 2.2.3 更好的warps任务划分
-![](Figure/flashattention/FAV2_3.png)
+![](../../posts/Figure/flashattention/FAV2_3.png)
 如上图，FlashAttention-2 将 $Q$ 移到了外循环 $i$，$K, V$ 移到了内循环 $j$，并将 $Q$ 分为 4 个 warp，所有 warp 都可以访问 $K$ 和 $V$。这样做的好处是：  
 1. **原来 FlashAttention 每次 KV 内循环 $i++$ 会导致 $O_i$ 也变换（而 $O_i$ 需要通过 HBM 读写），现在每次内循环 $j++$ 处理的都是 $O_i$，此时 $O_i$ 是存储在 SRAM 上的。** 
 2. **而且各个 warp 不用再像 1 在 shared memory 上做 reduce。** 
@@ -525,14 +525,14 @@ FlashAttention-3 提出了**Flash-Decoding**，在前作对 batch size 和 query
 
 ### 3.2 Flash-Decoding
 FlashAttention1-2 的注意力计算的并行过程可视化如下图所示：
-![](Figure/flashattention/parallelization0.gif)
+![](../../posts/Figure/flashattention/parallelization0.gif)
 可以看出，FlashAttention **只在查询块($Q$)和批次大小维度上(bs)进行并行处理**，因此在解码过程中无法充分利用 GPU 的全部计算资源。(推理阶段几乎全部都是$Q=1$，上述两个并行的前者失效)
 
 Flash-Decoding 基于 FlashAttention，并**增加了一个新的并行化维度：键/值的序列长度($K,V$)**。它结合了上述两种方法的优点。与 FlashAttention 一样，它将非常少量的额外数据存储在全局内存中，但只要上下文长度足够长，即使批次大小很小，也能充分利用 GPU。
 
 Flash-Decoding 在前作对 batch size 和 query length 并行的基础上增加了一个新的并行化维度：keys/values 的序列长度，**代价是最后一个小的归约步骤**。
 
-![](Figure/flashattention/parallelization_kv.gif)
+![](../../posts/Figure/flashattention/parallelization_kv.gif)
 
 Flash-Decoding 的工作流程分为三个步骤：
 

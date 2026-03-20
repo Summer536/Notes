@@ -2,27 +2,17 @@
 title: 学习笔记
 index: false
 icon: folder-open
+article: false
 category:
   - 笔记
 ---
 
 # 学习笔记
 
-这里收集了我的技术学习笔记和心得体会，包括各种技术栈的学习记录。
+这里收集了我的技术学习笔记，并按主题拆分为三个子目录，方便按方向查阅。
 
-## 笔记列表
+## 分类导航
 
-- [Interview](https://https://summer536.github.io/Notes/zh/posts/interview.html) - 笔试面试经典题
-- [Deepseek MLA](https://summer536.github.io/Notes/zh/posts/Deepseek_MLA.html) - MLA机制及其实现方法介绍
-- [Step3 AF](https://summer536.github.io/Notes/zh/posts/Step3_AF.html) - Step3 AF分离推理系统 vs. deepseek EP推理系统
-- [AWQ](https://summer536.github.io/Notes/zh/posts/AWQ.html) - AWQ激活感知的权重量化
-- [DeepSpeed](https://summer536.github.io/Notes/zh/posts/DeepSpeed.html) - DeepSpeed分布式训练框架
-- [并行方法DP、TP、PP、EP、SP](https://summer536.github.io/Notes/zh/posts/parallel.html) - 并行方法
-- [MoE](https://summer536.github.io/Notes/zh/posts/MoE.html) - 混合专家模型
-- [Gemm](https://summer536.github.io/Notes/zh/posts/gemm.html) - GEMM优化
-- [Reduce](https://summer536.github.io/Notes/zh/posts/Reduce.html) - Reduce优化
-- [关于大模型推理的思考](https://summer536.github.io/Notes/zh/posts/Inference.html) - 大模型推理服务的一些常见问题
-- [PagedAttention](https://summer536.github.io/Notes/zh/posts/pagedattention.html) - 分页注意力机制计算方法的详细解析
-- [Naive -> Safe -> Online Softmax](https://summer536.github.io/Notes/zh/posts/softmax.html) - Softmax的发展
-- [Flashattention技术详解](https://summer536.github.io/Notes/zh/posts/flashattention.html) - 高效注意力机制计算方法的详细解析
-- [CUDA技术栈](https://summer536.github.io/Notes/zh/posts/cuda-tech-stack.html) - CUDA并行计算平台及编程模型介绍 
+- [AI infra](https://summer536.github.io/Notes/zh/notes/ai-infra/) - 推理系统、大模型训练与部署相关笔记
+- [CUDA](https://summer536.github.io/Notes/zh/notes/cuda/) - CUDA 编程、算子优化与并行计算相关笔记
+- [基础知识](https://summer536.github.io/Notes/zh/notes/basic/) - 面试、C++ 与基础知识整理

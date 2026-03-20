@@ -6,17 +6,32 @@ export const zhSidebar = sidebar({
     {
       text: "学习笔记",
       icon: "folder-open",
-      link: "/zh/notes/",
+      prefix: "notes/",
+      link: "notes/",
+      children: [
+        {
+          text: "AI infra",
+          link: "ai-infra/",
+        },
+        {
+          text: "CUDA",
+          link: "cuda/",
+        },
+        {
+          text: "基础知识",
+          link: "basic/",
+        },
+      ],
     },
     {
-      text: "论文浅读",
-      icon: "book",
-      link: "/zh/interview/",
-    },
-    {
-      text: "项目实践",
+      text: "Book",
       icon: "code",
-      link: "/zh/projects/",
+      link: "/zh/book/",
+    },
+    {
+      text: "关于我",
+      icon: "profile",
+      link: "/zh/about/",
     },
   ],
 });

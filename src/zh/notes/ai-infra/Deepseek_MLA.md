@@ -33,11 +33,11 @@ LLM 推理分为两个阶段：prefill 阶段和 decode 阶段
 
 在 LLM 生成过程中，是一个基于前向序 token 列预测下一个 token 的过程，序列中的 token（无论是 prefill 阶段，还是 decode 阶段）只与它前面的 token 交互来计算 attention，我们也称这种 Attention 为 **Causal Attention**。矩阵计算上通过一个下三角的 Causal Attention Mask 来实现 token 交互只感知前向序列。如图所示，展现的 Transformer 内部的细节：
 
-![](Figure/MLA/figure2.png)
+![](../../posts/Figure/MLA/figure2.png)
 注：上图中的圆圈+表示残差加，残差是来自上一个模块的RMSNorm前的输入。
 
 在传统的transformer结构中，以一个序列的t位置的token为例，计算一层Tansformer的attention过程，如列下公式所示:
-![](Figure/MLA/figure3.png)
+![](../../posts/Figure/MLA/figure3.png)
 
 注：这里的h代指head
 
@@ -95,7 +95,7 @@ $$
 
 4. **计算优化（Computation Optimization）**
 
-通过算法优化计算过程，减少 GPU 显存访问次数，提升推理效率。代表方法：[Flashattention技术详解](https://summer536.github.io/Notes/zh/posts/flashattention.html) 。
+通过算法优化计算过程，减少 GPU 显存访问次数，提升推理效率。代表方法：[Flashattention技术详解](https://summer536.github.io/Notes/zh/notes/ai-infra/flashattention.html) 。
 
 ### 2.2 MQA（Multi-Query Attention）
 
@@ -106,7 +106,7 @@ MQA 方法的核心思想是让所有 Attention Head 共享同一组 Key 和 Val
 
 这大幅减少了 KV Cache 的内存占用，但也可能带来一定的精度损失。
 
-![](Figure/MLA/figure4.png)
+![](../../posts/Figure/MLA/figure4.png)
 
 ### 2.3 GQA（Grouped-Query Attention）
 
@@ -157,24 +157,24 @@ GQA 在保持性能的同时显著降低了内存消耗，是当前主流大模�
 ## 三、Deepseek MLA（Multi-Head Latent Attention）
 
 ### 3.1 低秩压缩介绍
-[Inference第六题第一点](https://summer536.github.io/Notes/zh/posts/Inference.html)
+[Inference第六题第一点](https://summer536.github.io/Notes/zh/notes/ai-infra/Inference.html)
 
 ### 3.2 MLA公式及原理
 MLA的结构如下图所示：
 
-![](Figure/MLA/architecture_of_MLA.png)
+![](../../posts/Figure/MLA/architecture_of_MLA.png)
 
 MLA和MHA对比如下：
 
-![](Figure/MLA/MLA_MHA.jpg)
+![](../../posts/Figure/MLA/MLA_MHA.jpg)
 
 
 首先列举一下各个参数的含义及其大小（以deepseek-v3为例）：
-![](Figure/MLA/v3config.png)
+![](../../posts/Figure/MLA/v3config.png)
 
 MLA完整的计算公式如下所示：
 
-![](Figure/MLA/figure1.png)
+![](../../posts/Figure/MLA/figure1.png)
 
 在论文中提到，每个Transformer层，只缓存了上述公式蓝框的向量$k_t^R$和$c_t^{KV}$！！！
 
