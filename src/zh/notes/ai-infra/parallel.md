@@ -40,7 +40,7 @@ isOriginal: true
 
 在这些前置条件下，绘制出如下的分布式配置图片
 
-![](../../posts/Figure/parallel/parallel.jpg)
+![](./Figure/parallel/parallel.jpg)
 
 
 对于一个模型，它**沿着 layer 层被横向切成 2 份（$pp = 2$），沿着权重被纵向切成 2 份（$tp = 2$）。对应到图里，就是 4 个不同颜色的色块组成一个完整的模型**。
@@ -64,7 +64,7 @@ So 什么是tp、cp(sp)、ep、dp、pp？
 ## 一、Data Parallel
 数据并行（Data Parallel）是数据平均分配到GPU上并行处理的策略。**每个GPU上都拥有一份完整的模型副本**，**各自吃一份数据(mini-batch)，算一份梯度，最后对梯度进行累加**来更新整体模型。
 
-![](../../posts/Figure/parallel/dp.png)
+![](./Figure/parallel/dp.png)
 
 数据并行主要分为以下三种方法：
 - DP（Data Parallelism）：最早的数据并行模式，一般采用参数服务器(Parameters Server)这一编程框架。实际中多用于**单机多卡**
@@ -74,7 +74,7 @@ So 什么是tp、cp(sp)、ep、dp、pp？
 ### 1.数据并行（DP）
 
 #### 1.1 主要框架
-![](../../posts/Figure/parallel/DP.jpg)
+![](./Figure/parallel/DP.jpg)
 1. 默认的主卡（通常是 GPU 0）负责读取一个 batch 的数据，并将数据划分为多个 mini-batch 分别发送到其他 GPU；
 2. 从主卡（GPU 0）复制一份最新的模型到所有 GPU 上；
 3. 每张 GPU 独立执行前向传播（FWD），得到各自的输出；所有 GPU 的输出被发送回主卡（GPU 0）进行 loss 计算；
@@ -104,13 +104,13 @@ So 什么是tp、cp(sp)、ep、dp、pp？
 为了尽可能的压榨计算资源，老板们想出了一个办法：**梯度异步更新**。
 
 梯度异步更新简单来讲就是：在第N轮计算中，Worker正常计算梯度，并向Server发送梯度请求。但是，该Worker并不会实际等到把聚合梯度拿回来，更新完参数W后再做计算。而是直接拿旧的W，吃新的数据，继续第N+1轮的计算。这样就保证在通讯的时间里，Worker也在马不停蹄做计算，提升计算通讯比。
-![](../../posts/Figure/parallel/yibu.jpg)
+![](./Figure/parallel/yibu.jpg)
 
 当然，异步也不能太过份。只计算梯度，不更新权重，那模型就无法收敛。图中刻画的是延迟为1的异步更新，也就是在开始第12轮对的计算时，必须保证W已经用第10、11轮的梯度做完2次更新了。
 
 参数服务器的框架下，**延迟的步数也可以由用户自己决定**，下图分别刻划了几种延迟情况：
 
-![](../../posts/Figure/parallel/yibu2.jpg)
+![](./Figure/parallel/yibu2.jpg)
 
 - (a) 无延迟
 - (b) 延迟但不指定延迟步数。也即在迭代2时，用的可能是老权重，也可能是新权重，听天由命。
@@ -128,7 +128,7 @@ DDP与DP的实现过程类似，步骤1-4都一致，**不同的是第5步，DP�
 
 而对前文的 DP（Data Parallelism）来说，它的 Server 承载的通讯量是$N\Phi$，Workers 为$N\Phi$，全卡总通讯量依然为$2N\Phi$。**虽然通讯量相同，但搬运相同数据量的时间却不一定相同**。DDP 把通讯量均衡负载到了每一时刻的每个 Worker 上（**其通讯时间仅取决于逻辑环中最慢的两个 GPU 的连接，且不随GPU数量的增多而增多）**，而 DP 仅让 Server 做勤劳的搬运工。当越来越多的 GPU 分布在距离较远的机器上时，DP 的通讯时间是会增加的（**其通讯时间随GPU数量增多而增大**）。
 
-![](../../posts/Figure/parallel/ring.png)
+![](./Figure/parallel/ring.png)
 
 如果一个节点上的所有 GPU 在环中彼此相邻，则该算法的功能最佳；这最小化了网络争用的量，否则这可能会显著降低 GPU-GPU 连接的有效带宽。
 
@@ -144,7 +144,7 @@ ZeRO有三个阶段：
 - ZeRO Stage 2：对优化器状态和梯度进行分割
 - ZeRO Stage 3：对优化器状态、梯度和模型参数全部进行分割
 
-![](../../posts/Figure/parallel/zero.png)
+![](./Figure/parallel/zero.png)
 
 具体的ZeRO实现过程详见文章[DeepSpeed](https://summer536.github.io/Notes/zh/notes/ai-infra/DeepSpeed.html)
 
@@ -162,7 +162,7 @@ ZeRO有三个阶段：
 ## 三、Pipeline Parallel
 流水线并行的思想是，**模型按层分割成若干块，每块都交给一个设备**。在前向传递过程中，每个设备将中间的激活传递给下一个阶段。在后向传递过程中，每个设备将输入张量的梯度传回给前一个流水线阶段。这允许设备同时进行计算，并增加了训练的吞吐量。**流水线并行训练的一个缺点是，会有一些设备参与计算的冒泡时间，导致计算资源的浪费**。
 
-![](../../posts/Figure/parallel/PP.png)
+![](./Figure/parallel/PP.png)
 
 Pipeline Parallel的应用主要以Gpipe为例，详细可阅读[图解大模型训练之：流水线并行（Pipeline Parallelism），以Gpipe为例](https://zhuanlan.zhihu.com/p/613196255)
 
@@ -181,7 +181,7 @@ Pipeline Parallel的应用主要以Gpipe为例，详细可阅读[图解大模型
 对此，Gpipe采用了一种非常简单粗暴但有效的办法：**用时间换空间**，在论文里，这种方法被命名为**re-materalization，后人也称其为active checkpoint**。
 具体来说，就是几乎不存中间结果，等到backward的时候，再重新算一遍forward，图例如下：
 
-![](../../posts/Figure/parallel/PP2.jpg)
+![](./Figure/parallel/PP2.jpg)
 
 每块GPU上，我们只保存来自上一块的最后一层输入$z$，其余的中间结果我们算完就废。等到backward的时候再由保存下来的$z$重新进行forward来算出。
 
@@ -191,7 +191,7 @@ Pipeline Parallel的应用主要以Gpipe为例，详细可阅读[图解大模型
 张量并行（Tensor Parallelism）是将矩阵乘加运算分解在N个GPU设备上，**张量可以按横向或纵向进行切分，每个切片由独立的GPU 处理**。每块GPU 对其张量切片执行计算，最终将各自结果同步合并，重建出完整的计算结果。由于每块GPU 可以并行处理自己的张量切片，张量并行在速度和效率上都有提升，并且可以与其他并行策略配合使用。
 
 **TP需要很大的卡间通信带宽，所以一般只适用于支持NVLink的单机GPU之间进行并行**。
-![](../../posts/Figure/parallel/TP.png)
+![](./Figure/parallel/TP.png)
 
 张量并行是由Megatron-LM(Nvidia的分布式训练框架)提出，冷知识：Megatron是变形金刚（transformer）的反派主角霸天虎领袖--威震天。
 
@@ -203,7 +203,7 @@ Pipeline Parallel的应用主要以Gpipe为例，详细可阅读[图解大模型
 #### 1.1 Forward
 按不同方式切分权重后的线性层推理 forward 操作的可视化对比图如下图所示：
 
-![](../../posts/Figure/parallel/weight_split_row_column.png)
+![](./Figure/parallel/weight_split_row_column.png)
 
 - 权重A如果按照行切分，那么GEMM的维度无法对齐，需要再把X按列切开才能做到矩阵乘法，并在对应GPU设备上分别执行GEMM得到Y1和Y2。然后再对Y1和Y2逐元素相加才能得到Y。
 - 权重A按照列拆分直接计算得到Y1和Y2，然后concat即可。
@@ -212,7 +212,7 @@ Pipeline Parallel的应用主要以Gpipe为例，详细可阅读[图解大模型
 
 *行切分的backward计算图如下：*
 
-![](../../posts/Figure/parallel/TP_hang.jpg)
+![](./Figure/parallel/TP_hang.jpg)
 
 - **f 和 g**：分别表示两个算子，每个算子都包含一组 forward + backward 操作。
 - 图中的每一行，表示单独在一块 GPU 上计算的过程。
@@ -231,7 +231,7 @@ Pipeline Parallel的应用主要以Gpipe为例，详细可阅读[图解大模型
 *列切分的backward计算图如下：*
 
 (这个图的XW1和XW2应该转一下，是竖着的长方形，不过不影响理解)
-![](../../posts/Figure/parallel/TP_lie.jpg)
+![](./Figure/parallel/TP_lie.jpg)
 
 - **g 的 backward**：易推出
   $$
@@ -247,15 +247,15 @@ Pipeline Parallel的应用主要以Gpipe为例，详细可阅读[图解大模型
 ### 2.Transformer模型并行概览
 标准的 transformer 层如图所示，其由一个自注意力（self-attention）模块和一个两层的多层感知机 (MLP)组成，可在这两个模块中分别引入模型并行（也叫张量并行）技术。
 
-![](../../posts/Figure/parallel/TP_transformer.png)
+![](./Figure/parallel/TP_transformer.png)
 
 ### 3.MLP层
 MLP的计算过程如下：
-![](../../posts/Figure/parallel/MLP.jpg)
+![](./Figure/parallel/MLP.jpg)
 
 其中，GELU是激活函数，A和B分别为两个线性层。在Transformer里，一般设$h' = 4h$。假设现在有N块GPU，我们要把MLP层的权重拆到上面做计算，要怎么拆分呢？Megatron提供的拆分办法如下：
 
-![](../../posts/Figure/parallel/MLP2.jpg)
+![](./Figure/parallel/MLP2.jpg)
 
 在 MLP 层中，**对 A 采用“列切割”，对 B 采用“行切割”**。
 
@@ -266,7 +266,7 @@ MLP的计算过程如下：
 
 为什么我们对 A 采用列切割，对 B 采用行切割呢？这样设计的原因是，我们尽量保证各 GPU 上的计算相互独立，减少通讯量。对 A 来说，需要做一次 GELU 的计算，而 GELU 函数是非线性的，它的性质如下：
 
-![](../../posts/Figure/parallel/MLP3.jpg)
+![](./Figure/parallel/MLP3.jpg)
 
 也就意味着，如果对A采用行切割，我们必须在做GELU前，做一次AllReduce，这样就会产生额外通讯量。但是**如果对A采用列切割，那每块GPU就可以继续独立计算了**。一旦确认好**A做列切割，那么相应地B需要做行切割**了（仔细看，行切割之后再做列切割，其计算非常的丝滑，维度十分匹配）。
 
@@ -280,20 +280,20 @@ $$
 
 ### 4.Self-Attention层
 Self-Attention层为MHA+Linear的组合，其计算过程如下（左边TP的框中）：
-![](../../posts/Figure/parallel/TP_attention.jpg)
+![](./Figure/parallel/TP_attention.jpg)
 
 
 当head数量为1时，self-attention层的计算方法如下：
-![](../../posts/Figure/parallel/MHA1.jpg)
+![](./Figure/parallel/MHA1.jpg)
 
 - seq_len, d_model 分别为本文维度说明中的 $s$ 和 $h$，也即序列长度和每个 token 的向量维度。
 - $W^Q$, $W^K$, $W^V$ 即 attention 层需要做训练的三块权重。
 
 当head数量为$n$时，下图展示了当num_heads = 2 时 attention 层的计算方法。即对每一块权重，我们都**沿着列方向（k_dim）维度切割**一刀。此时每个 head 上的 $W^Q$, $W^K$, $W^V$ 的维度都变成 $(d_model, k_dim // 2)$。每个 head 上单独做矩阵计算，最后将计算结果 concat 起来即可。整个流程如下：
-![](../../posts/Figure/parallel/MHA2.jpg)
+![](./Figure/parallel/MHA2.jpg)
 
 可以发现，attention的多头计算简直是为张量模型并行量身定做的，因为每个头上都可以独立计算，最后再将结果concat起来。也就是说，**可以把每个头的参数放到一块GPU上**。则整个过程可以画成：
-![](../../posts/Figure/parallel/MHA3.jpg)
+![](./Figure/parallel/MHA3.jpg)
 
 **对三个参数矩阵Q，K，V，按照“列切割”**，每个头放到一块GPU上，做并行计算。对**线性层B，按照“行切割”**。切割的方式和MLP层基本一致，其forward与backward原理也一致，这里不再赘述。
 最后，在**实际应用中，并不一定按照一个head占用一块GPU来切割权重，我们也可以一个多个head占用一块GPU**，这依然不会改变单块GPU上独立计算的目的。所以实际设计时，我们**尽量保证head总数能被GPU个数整除**。
@@ -315,7 +315,7 @@ Embedding层一般由两个部分组成：
 对positional embedding来说，max_s本身不会太长，因此每个GPU上都拷贝一份，对显存的压力也不会太大。但是对word embedding来说，词表的大小就很客观了，因此**需要把word embedding拆分到各个GPU上**，具体的做法如下：
 
 #### 5.1 输入Embedding
-![](../../posts/Figure/parallel/embedding1.jpg)
+![](./Figure/parallel/embedding1.jpg)
 
 对于输入X，过word embedding的过程，就是等于用token的序号去word embedding中查找对应词向量的过程。例如，输入数据为[0, 212, 7, 9]，数据中的每一个元素代表词序号，我们要做的就是去word embedding中的0，212，7，9行去把相应的词向量找出来。
 
@@ -324,7 +324,7 @@ Embedding层一般由两个部分组成：
 例如例子中，第一块GPU的查找结果为[ok, 0, ok, ok]，第二块为[0, ok, 0, 0]，两个向量一相加，变为[ok, ok, ok, ok]
 
 #### 5.2 输出Embedding
-![](../../posts/Figure/parallel/embedding2.jpg)
+![](./Figure/parallel/embedding2.jpg)
 
 需要注意的是，我们**必须时刻保证输入层和输出层共用一套word embedding**。而在backward的过程中，我们在输出层时会对word embedding计算一次梯度，在输入层中还会对word embedding计算一次梯度。在用梯度做word embedding权重更新时，我们**必须保证用两次梯度的总和进行更新**。
 
@@ -334,12 +334,12 @@ Embedding层一般由两个部分组成：
 ### 6.Cross-entropy(计算交叉熵损失函数)层 
 输出层过完embedding后的样子：
 
-![](../../posts/Figure/parallel/cross1.jpg)
+![](./Figure/parallel/cross1.jpg)
 
 正常来说，我们需要对Y1和Y2做一次All-Gather，把它们concat起来形成Y，然后对Y的每一行做softmax，就可得到对于当前位置来说，每个词出现的概率。接着，再用此概率和真值组做cross-entropy即可。
 但是All-Gather会产生额外的通讯量$b*s*v$。当词表v很大时，这个通讯开销也不容忽视。针对这种情况，可以做如下优化：
 
-![](../../posts/Figure/parallel/cross2.jpg)
+![](./Figure/parallel/cross2.jpg)
 
 - 每块 GPU 上，我们可以先按行求和，得到各自 GPU 上的 `GPU_sum(e)`。
 - 将每块 GPU 上的结果做 AllReduce，得到每行最终的 `sum(e)`，也就是 softmax 中的分母。此时的通讯量为 $b * s$。
@@ -351,7 +351,7 @@ Embedding层一般由两个部分组成：
 ## 五、TP+DP混合并行
 在实际应用中，对Transformer类的模型，采用**最经典方法是张量模型并行 + 数据并行，并在数据并行中引入ZeRO做显存优化**。
 
-![](../../posts/Figure/parallel/TPDP.jpg)
+![](./Figure/parallel/TPDP.jpg)
 
 其中，node表示一台机器，一般我们在**同一台机器的GPU间做张量模型并行**。在**不同的机器上做数据并行**。图中颜色相同的部分，为一个数据并行组。凭直觉，我们可以知道这么设计大概率和两种并行方式的通讯量有关。具体来说，**它与TP和DP模式下每一层的通讯量有关，也与TP和DP的backward计算方式有关**。我们分别来看这两点。
 
@@ -372,15 +372,15 @@ $$
 ### 2.TP和DP的backward计算方式
 TP在从上一层往下一层做backward的过程中，所有GPU间需要做一次AllReduce的。例如下图：
 
-![](../../posts/Figure/parallel/TPDP2.jpg)
+![](./Figure/parallel/TPDP2.jpg)
 
 而对DP来说，本层算完梯度以后，就正常把本层的梯度发出去，和属于一个DP组的GPU做AllReduce，同时继续往下一层做backward。下一层也是同理。也就是**在DP组中，下一层不依赖上一层的梯度聚合结果**。因此**在DP组中对带宽的要求就没那么高了**。所以可以放到机器间做DP。例如下图：
 
-![](../../posts/Figure/parallel/TPDP3.jpg)
+![](./Figure/parallel/TPDP3.jpg)
 
 ### 3.实验效果
 Nvidia的Megatron-LM中，提供了TP+DP混合并行的实现。我们来看一下实验效果。
-![](../../posts/Figure/parallel/TPDP4.jpg)
+![](./Figure/parallel/TPDP4.jpg)
 
 其中，蓝色表示TP并行每张卡的计算效率。因为涉及卡间的通信，所以GPU的计算效率略有下降。从蓝色柱状图可以看出，随着模型的增大，需要的GPU数量变多，**通讯量增大，单卡的计算效率是在下降的**。
 
@@ -400,11 +400,11 @@ Nvidia的Megatron-LM中，提供了TP+DP混合并行的实现。我们来看一�
 **Background**
 
 先来回顾一下，威震天的TP并行策略如下图（对Attention部分和MLP部分做了权重切分）
-![](../../posts/Figure/parallel/SP1.png)
+![](./Figure/parallel/SP1.png)
 
 我们知道，GPU 的显存大小是模型训练的瓶颈之一。**模型权重、梯度、优化器和激活值等都会占用显存**。其中，当我们在 bwd 的过程中使用链式法则层层向下计算梯度时，激活值（activation）就成为了传导的中间媒介（例如图中，X、Y1、Z1 等就属于激活值）。由于激活值对显存的占据也是显著的，因此，我们有必要对激活值的存储做优化。
 
-![](../../posts/Figure/parallel/MLP2.jpg)
+![](./Figure/parallel/MLP2.jpg)
 
 在以往的做法中，为了降低激活值占据的显存，我们会采用重计算（recomputation）技术
 
@@ -419,7 +419,7 @@ Nvidia的Megatron-LM中，提供了TP+DP混合并行的实现。我们来看一�
 
 megatron sp的核心思想是借鉴tp把模型权重切分到多卡上的方式，把激活值也切分到各张卡上。相比于tp，tp+sp保持了原始tp并行模块不变，只是**针对Attn和MLP的输入/输出部分做了sp（序列并行处理）**。
 
-![](../../posts/Figure/parallel/SP2.png)
+![](./Figure/parallel/SP2.png)
 
 猿姐文章中对tp下维护的激活值大小以及tp+sp下维护的激活值大小以及通讯量做了详细计算和对比，这里直接给出结论：
 - **不做任何并行处理时**，单卡上 attn+mlp 层的激活值大小为：
@@ -438,7 +438,7 @@ megatron sp的核心思想是借鉴tp把模型权重切分到多卡上的方式�
 
 即使用了sp+tp，我们的**显存可能也存不下全部的激活值**。同时，由于我们总是**可以边算边通讯**，因此可能**没有必要一下子把全部的激活值都保存下来**，例如通过一些优化，让模型还在上一层做通讯时，下一层就开始重计算（这里的层不是指模型的layer，是指bwd的时间轴，这里只是大概举个例子）。因此一种折衷的办法是：在使用tp+sp的前提下，**只保留部分激活值，另一部分留做重计算**。那什么样的激活值是我们不想保留的呢？自然是那些占显存大，但是本身计算量不大的激活值（例如Attention score相关的计算，softmax这种操作比起矩阵乘法来说就更快）。megatron管这种办法叫selective activation recomputation（选择性重计算）。
 
-![](../../posts/Figure/parallel/SP3.jpg)
+![](./Figure/parallel/SP3.jpg)
 
 经过实验发现，tp+sp+选择性重计算这种方案的整体表现最好
 
@@ -457,7 +457,7 @@ Megatron cp在实践上和朴素的ring attention非常相似，但是它做了�
 - 每张卡上，Q和当前轮转到的(K, V)数据做attention计算，然后通过类似Flash Attention V2的方式更新output
 - 当所有的KV值轮转完毕后，每张卡上就得到了最终的output。
 
-![](../../posts/Figure/parallel/CP1.jpg)
+![](./Figure/parallel/CP1.jpg)
 
 这个朴素的ring attention有个问题：**计算负载不均衡**。
 - 对于gpu0，它维护着Q0，这也意味着后面流转过来的(K1, V1)(K2, V2)(K3, V3)都是位于它之后的tokens产出的结果，它根本不需要和它们做attn，这时gpu0的计算就被浪费了。（这是Transformer的Mask机制）
@@ -466,7 +466,7 @@ Megatron cp在实践上和朴素的ring attention非常相似，但是它做了�
 **Megatron CP**
 
 Megatron CP对ring attention的负载均衡做了优化，它采用分块的思路，具体如下图所示:
-![](../../posts/Figure/parallel/CP3.jpg)
+![](./Figure/parallel/CP3.jpg)
 
 假设cp_size = 4，也就是我们打算在4块gpu上做ring attention。
 
@@ -496,7 +496,7 @@ Scatter 是数据的 1 对多的分发，它将一张 XPU/GPU 卡上的数据进
 - ReduceScatter 组合里的 Scatter 操作；
 - 模型并行里初始化时将模型 Scatter 到不同的 XPU 上；
 
-![](../../posts/Figure/parallel/scatter1.png)
+![](./Figure/parallel/scatter1.png)
 
 ### 2.Gather(N分片->1合并)
 Gather 是数据的多对 1 的收集，它将多张 XPU 卡上的数据收集到 1 张 XPU 卡上，他的反向操作对应 Scatter
@@ -517,7 +517,7 @@ Reduce 是数据的多对 1 的规约运算，它将所有 XPU 卡上的数据�
 ### 5.ReduceScatter(N分片->1规约计算->N分发)
 ReduceScatter 是数据的多对多的 reduce + scatter 运算，它将所有的 XPU 卡上的数据**先规约（比如 SUM 求和）到 1 张 XPU 卡上，再进行 scatter**。如下图所示，先 reduce 操作 XPU 0-3 的数据 reduce 为 A(A0+A1+A2+A3) + B(B0 + B1 +B2 + B3) + C(C0 + C1 + C2 + C3) + D(D0 + D1 + D2 + D3 ) 到一张 XPU 上，再进行分片 scatter 到集群内所有的 XPU 卡上。
 
-![](../../posts/Figure/parallel/reducescatter.png)
+![](./Figure/parallel/reducescatter.png)
 
 其应用场景有：
 
@@ -529,13 +529,13 @@ ReduceScatter 是数据的多对多的 reduce + scatter 运算，它将所有的
 
 AllReduce 的最终目标，就是让每块 GPU 上的数据都变成下图箭头右边汇总的结果。
 
-![](../../posts/Figure/parallel/all_reduce.jpg)
+![](./Figure/parallel/all_reduce.jpg)
 
 
 Ring-AllReduce 是由百度提出的一种高效 **All Reduce** 算法，用于在分布式系统中进行数据同步。它通过环形拓扑结构，将数据分发到相邻的节点，从而实现高效的通信。
 nvidia的NCCL通信库采用了这种算法。其通信流程如下图所示：
 
-![](../../posts/Figure/parallel/ringallreduce.jpg)
+![](./Figure/parallel/ringallreduce.jpg)
 
 接下来计算的通信量只包括发送的参数量。假设有 $N$ 个设备，模型参数总量为 $\Psi$，每个梯度块的大小为 $\Psi/N$，每个设备只与其相邻的设备进行通信，首先讲解 Reduce-scatter 阶段：
 

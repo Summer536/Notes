@@ -8,7 +8,7 @@ HPC优化的核心思想，怎么样让数据放在更近的存储上来掩盖�
 const int M = 2048;<br>
 const int N = 2048;<br>
 const int K = 2048;
-![](../../posts/Figure/gemm/navie.jpg)
+![](./Figure/gemm/navie.jpg)
 
 ```cpp
 __global__ void matrixMulGPU(float* A, float* B, float* C, int M, int N, int K) {
@@ -32,9 +32,9 @@ __global__ void matrixMulGPU(float* A, float* B, float* C, int M, int N, int K) 
 > 💡 **Note**如何确定分块数量？每一个 Block 该负责多大的矩阵乘？每一个 thread 又应该负责多大的矩阵乘？[https://zhuanlan.zhihu.com/p/688610975]<br>
 
 > 💡 **Note**为什么沿着k维度切?<br>
-![](../../posts/Figure/gemm/qie.jpg)
+![](./Figure/gemm/qie.jpg)
 如果按照这种方法切块的话，会重复读取数据。例如对于图中的一块A（高亮），它和B中的若干块对应，也就意味着A的这个分块会被重复加载若干次（和naive GEMM是一个道理）。但是如果我们竖着切A，横着切B（此时A和B都是沿着K方向切割的），这样所有的A分块和B分块都只会被加载1次。可以能帮助我们节省加载数据的时间。
-![](../../posts/Figure/gemm/g-s.jpg)
+![](./Figure/gemm/g-s.jpg)
 ```cpp
 static_assert((bm * bk + bk * bn) * sizeof(float) <= 48 * 1024, "share memory is out of 48KB!");
 
@@ -78,7 +78,7 @@ __global__ void matrixMulGPU(float* A, float* B, float* C, int M, int N, int K) 
     }
 }
 ```
-![](../../posts/Figure/gemm/shared%202.jpg)
+![](./Figure/gemm/shared%202.jpg)
 - 每次取A矩阵的一个分块（bm,bk），取B矩阵的一个分块（bk,bn），将两者相乘得到分块矩阵C（bm,bn）;
 - 对A矩阵，向右找到下一个分块；对B矩阵，向下找到下一个分块，然后再相乘得到分块矩阵C，累加到上一个分块矩阵C上;
 - 如此循环，当我们遍历完所有的A分块和B分块后，就可以得到最终的分块矩阵C了。也就是我们图中的高亮绿块（bm,bn）。
@@ -91,7 +91,7 @@ __global__ void matrixMulGPU(float* A, float* B, float* C, int M, int N, int K) 
 - 待优化点<br>
 可以将global memory分块加载到shared memory中，那是否可以将shared memory分块加载到register中？
 ## V3. 一个矩阵计算多个元素
-![](../../posts/Figure/gemm/thread.jpg)
+![](./Figure/gemm/thread.jpg)
 ```cpp
 static_assert((bm * bk + bk * bn) * sizeof(float) <= 48 * 1024, "share memory is out of 48KB!");
 
@@ -244,7 +244,7 @@ __global__ void matrixMulGPU(float* A, float* B, float* C, int M, int N, int K) 
 }
 ```
 ### 性能分析
-![](../../posts/Figure/gemm/bank%20conflict.jpg)
+![](./Figure/gemm/bank%20conflict.jpg)
 - 向量化读取数据时，warp会采用LDS.128指令，一个warp共需取4*32 = 128个数，已经超过warp单次memory transaction允许的取数上限（通常每次最多读取 128 字节）。所以该warp会把取数过程拆成4个串行的phase（即4次串行的memory transcation）：即0～7，8～15，16～23，24～31。这时bank conflict被定义在每个phase（也就是1/4个warp之内）。
 ## V5. B矩阵向量化读取 + 双缓冲优化
 ```cpp
@@ -330,7 +330,7 @@ __global__ void matrixMulGPU(float* A, float* B, float* C, int M, int N, int K) 
     if ((row + 1) < M && (col+1) < N) C[(row + 1) * N + (col+1)] = sum[1][1];
 }
 ```
-![](../../posts/Figure/gemm/doubleBuffer.png)
+![](./Figure/gemm/doubleBuffer.png)
 - 双缓冲
    - __shared__ float sA[2][bm][bk];<br>
     __shared__ float sB[2][bk][bn]; <br>
@@ -344,7 +344,7 @@ __global__ void matrixMulGPU(float* A, float* B, float* C, int M, int N, int K) 
     - 切换缓冲区
 ### 性能分析
 取矩阵B需要取一个列向量，而矩阵B在Shared Memory中是按行存储的，加载的这个列向量上的数据，全在一个bank上，所以会导致bank conflict。
-![](../../posts/Figure/gemm/bank%20conflict1.jpg)
+![](./Figure/gemm/bank%20conflict1.jpg)
 ## V6. 共享内存bank冲突优化
 bank conflict是针对一个warp内的threads定义的。不同的warp间不存在bank conflict这个概念。
 下面是两个实现，第一个是与v5一样的tile size和寄存器复用，第二个好似更大的tile size和更多的寄存器复用。
@@ -628,7 +628,7 @@ int main() {
 
  
 ## 性能对比
-![](../../posts/Figure/gemm/性能对比.jpg)
+![](./Figure/gemm/性能对比.jpg)
 
 ## 参考资料
 1. [CUDA 矩阵乘法终极优化指南](https://zhuanlan.zhihu.com/p/410278370)

@@ -22,7 +22,7 @@ isOriginal: true
 ## 什么是reduce？
 reduce中文为"缩减"或"规约"，在CUDA中，Reduce是指将多个线程的计算结果通过某种操作（求和、求最小值等）合并为一个值的通用并行模式。常见的实现方式有树形规约、交叉规约等。
  - 树形规约（Tree-based Reduction）
-    ![树形规约](../../posts/Figure/reduce/tree.jpg)
+    ![树形规约](./Figure/reduce/tree.jpg)
 
 Tree-based Reduction使用共享内存，在一个block内按类似二叉树的方式合并相邻线程的数据，并逐层缩减，直到最终只由一个线程得到总结果。它的优点是通用性强，适用于任意线程数；缺点是需要同步（__syncthreads）和共享内存，稍慢一些。
 
@@ -43,7 +43,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
         Thread_per_block：每个block中开启的线程数，一般而言，取128，256，512，1024这几个参数会比较多。
         Num_per_block：每个block需要进行reduce操作的长度。
 
-   ![](../../posts/Figure/reduce/参数.png)
+   ![](./Figure/reduce/参数.png)
 
     从图中可以看出 $BlockNum \times Num\_per\_block = N$。
 
@@ -75,7 +75,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
     - 第二次迭代s为2，tid号线程将shared memory中第tid和第tid+2号元素想加后放回至tid号位置。
     - 不断迭代，直至将所有元素累加到thread0位置。
  - 最后只需要将thread0的元素取出即完成本轮reduce。
- ![示意图](../../posts/Figure/reduce/naive.jpg)
+ ![示意图](./Figure/reduce/naive.jpg)
 
  ### 影响性能的地方
   1. 取余操作<br>
@@ -108,7 +108,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
  }
  ```
  - 与naive Reduce相比 只是改变了if判断语句：
-   ![优化示意图](../../posts/Figure/reduce/naive.jpg)
+   ![优化示意图](./Figure/reduce/naive.jpg)
 
    **在naive中，每个thread对应的是shared memory中的每个元素，而经过优化后，现在每个thread对应的是threadIDs（也就是图中的橙色圆圈）。**
    <!-- - 在第一次迭代中0-3号warp满足if，执行相加指令，4-7号warp不满足，线程处于等待状态；
@@ -119,13 +119,13 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
  ### 影响性能的地方
   1. 存在bank conflict<br>
       每个thread访问相邻两个元素，如图所示
-      ![迭代示意图](../../posts/Figure/reduce/warp%20divergence1.png)
+      ![迭代示意图](./Figure/reduce/warp%20divergence1.png)
       根据下面这个式子
       $$Δindex = index(tid + 1) - index(tid) = 2 * s * (tid + 1) - 2 * s * tid = 2s$$
       计算可知相邻两个线程访问的地址差为2s。<br>
         s = 1: thread0访问sdata[0]和sdata[1],thread1访问sdata[2]和sdata[3],不存在bank conflict；<br>
         s = 16: thread0访问sdata[0]和sdata[16],thread1访问sdata[32]和sdata[48],存在bank conflict。
-        ![](../../posts/Figure/reduce/bank1.png)
+        ![](./Figure/reduce/bank1.png)
   2. 有一半的线程处于闲置，甚至一直到最后
 
 ## V3. 解决bank conflict
@@ -133,7 +133,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
 多个线程、同时、同一bank的同一地址 ➡️ 广播机制
 
  由于存在bank冲突，解决办法是将for循环逆着，使第0个元素与第128个元素相加，由于128是32的倍数，一个warp内的线程对应不同的bank，同时一个线程访问一个bank中的两个不同的数据，因此避免了bank conflict。
- ![](../../posts/Figure/reduce/bank%20conflict.jpg)
+ ![](./Figure/reduce/bank%20conflict.jpg)
  ```cpp
  __global__ void reducev3 (float* d_in, float* d_out) {
     __shared__ float sdata[Thread_per_block];
@@ -233,7 +233,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
      - sdata[tid] += sdata[tid + 16]  + warp 2 + warp 3
      - ...
      - sdata[tid]存放总和。
-![](../../posts/Figure/reduce/展开最后一维.jpg)
+![](./Figure/reduce/展开最后一维.jpg)
 
 ## V6. 使用shuffle指令
  warp shuffle允许同一warp内的线程可以直接在寄存器内访问数据，这一实现是硬件层面的。
@@ -295,7 +295,7 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
     }
  }
  ```
- ![](../../posts/Figure/reduce/shuffle.jpg)
+ ![](./Figure/reduce/shuffle.jpg)
  - warpReduce函数 
     - offset 每次减半：16 → 8 → 4 → 2 → 1
     - offset = 16 thread[i] += thread[i + 16]，
@@ -356,5 +356,5 @@ Tree-based Reduction使用共享内存，在一个block内按类似二叉树的�
  }
  ```
  ## 性能对比
-![](../../posts/Figure/reduce/性能对比.png)
+![](./Figure/reduce/性能对比.png)
 

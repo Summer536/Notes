@@ -836,7 +836,7 @@ for(int i = 0; i < N; i+=10) { //每十个迭代进行展开，十个加法并�
 ```
 我们假设加法延迟是五个周期（假设加法发射端口有两个，0和1），绘制示意图如下：
 
-![](../../posts/Figure/Interview/30.png)
+![](./Figure/Interview/30.png)
 
 在第一个周期的时候，两个端口会发射两条加法指令，分别是acc0 += in[0]和acc1 += in[1]，在第二个周期的时候，两个端口会发射两条加法指令，分别是acc2 += in[2]和acc3 += in[3]，以此类推。
 
@@ -852,7 +852,7 @@ CPU：
 
 GPU：（以A100为例）
 
-![](../../posts/Figure/Interview/31_1.png)
+![](./Figure/Interview/31_1.png)
 
 1.A100 **fp16** GPU CUDA core算力 = **CUDA core个数 * GPU频率 * 单个cuda core每周期计算操作数** = [108（SM数量） * 256（每SM的fp16指令吞吐）]* [1.41 * e9 （每秒周期数）] * [2（乘加)]= 78TFLOPS
 
@@ -861,7 +861,7 @@ GPU：（以A100为例）
 3.A100 fp16 GPU tensor core算力 = tensor core个数 * GPU频率 * 单个tensor core每周期计算操作数 =  [108（SM数量）* 4（tensorcore数量每SM）] * [1.41 * e9] * [256（指令/周期） * 2（乘加)] = 312TFLOPS
 
 
-![](../../posts/Figure/Interview/31_3.png)
+![](./Figure/Interview/31_3.png)
 
 
 ### 32. CPU流水线级数是否越多越好？
@@ -875,7 +875,7 @@ GPU：（以A100为例）
 ## 五. GPU体系结构与CUDA编程
 
 ### 33. 给一个CUDA kernel如何分配block和thread数？如何取到最优的block和thread数？
-![](../../posts/Figure/Interview/33.png)
+![](./Figure/Interview/33.png)
 
 最优的block数量和thread数量很难一次性确定，一般需要借助Nsight compute来分析occupancy
 
@@ -889,7 +889,7 @@ GPU：（以A100为例）
 
 *图中，左侧的full wave为2，占比为2/3，tail wave中只有一个block，占比为1/4，这俩的占比都不高，所以需要调整block数量；调整后右侧的full wave占比为4/5，tail wave占比为2/4，这俩的占比都高了，因此对应kernel的性能也会更好*
 
-![](../../posts/Figure/Interview/33_2.png)
+![](./Figure/Interview/33_2.png)
 
 **究极经验公式：**(这样设置一般差不了，Gemm例外，得特调)
 - block数量设置 1~4倍的SM数量
@@ -925,7 +925,7 @@ while(i < N){
 
 下图中绿色、蓝色代表了两个phase（对应于情况2.），而slot是同一bank内的概念，比如说数据块0的左半部分和16的左半部分它们就属于bank0的不同slot。**无论phase如何构成，一个bank中只存一个cacheline中的4bytes数据，一个cacheline永远都固定有32个bank**。cacheline是固定大小的，128bytes，因此才有了同一phase的三种情况，它本质上是要匹配上cacheline的。
 
-![](../../posts/Figure/Interview/35.png)
+![](./Figure/Interview/35.png)
 
 ### 36. 如何解决bank conflict？
 [CUDA shared memory避免bank conflict的swizzling机制解析](https://zhuanlan.zhihu.com/p/4746910252)
@@ -981,7 +981,7 @@ __global__ void transpose_swizzling(int* d_A, int M, int N, int* d_B){
 2. Coalesced Memory access连续：warp的32个thread请求的是连续的内存块；
 
 ### 38. 以下几种访问global memory的case，效率(实际利用数据量/总访问数据量)为多少？
-![](../../posts/Figure/Interview/38.png)
+![](./Figure/Interview/38.png)
 
 1. **100%** :线程需要了多少就拿进来多少，没有多余访问，且符合37题中给出的两点高效策略；
 2. **100%** :同上，没有多余访问，且符合37题中给出的两点高效策略；
@@ -1043,7 +1043,7 @@ int main() {
 
 在CUDA中，哪怕只有if语句，也会发生warp divergence，因为warp内的线程条件可能不同。但由于没有else，只会执行一条路径，不需要像if/else那样多走一遍，因此不会对性能造成显著影响。
 
-![](../../posts/Figure/Interview/42.png)
+![](./Figure/Interview/42.png)
 
 ### 42.1 如何避免warp divergence？
 如下代码会产生warp divergence：
@@ -1286,16 +1286,16 @@ $$
 
 ### 56. 为什么存在kv cache，而不存在q cache？
 
-![](../../posts/Figure/Interview/56_1.png)
+![](./Figure/Interview/56_1.png)
 
 忽略1/sqrt(dk)，
 
-![](../../posts/Figure/Interview/56_2.png)
+![](./Figure/Interview/56_2.png)
 
 加入Causal Mask会变成这样:
 
-![](../../posts/Figure/Interview/56_3.png)
-![](../../posts/Figure/Interview/56_4.png)
+![](./Figure/Interview/56_3.png)
+![](./Figure/Interview/56_4.png)
 
 可以看出**在序列的t位置，Q只有当前位置的 qt 参与了计算，而K和V多个位置参与了计算**，所以需要KV Cache，而不需要Q Cache。
 
@@ -1323,7 +1323,7 @@ $$
 
 ### 59. 讲一下Deepseek MLA机制
 详细见[Deepseek_MLA.md](https://summer536.github.io/Notes/zh/notes/ai-infra/Deepseek_MLA.html)
-![](../../posts/Figure/Interview/59.jpg)
+![](./Figure/Interview/59.jpg)
 
 1. **非RoPE部分**：qc=Wq * input，kc=Wk * input, vc = Wv * **input三者的W换成了LoRA似的降秩和升秩矩阵**，即q_no_rope=input * WDQ * WUQ, kv同理
 2. **RoPE部分**：仅针对qk，不针对v，q和k的rope分量是deepseek额外增加的，head size为64，q_rope由input * WDQ * WQR得到，k_rope由input * WKR得到, k需要做Broadcast。
@@ -1338,7 +1338,7 @@ MLA缓存的Latent KV比较短（相当于**2.25个MQA的缓存量**），但MLA
 
 
 ### 61. MoE模型相比于非MoE模型的变化？
-![](../../posts/Figure/Interview/61.png)
+![](./Figure/Interview/61.png)
 MLP：指FFN前馈神经网络，是transformer中除了self attention之外的另一个重要的组成部分。
 
 原本的非MoE模型其hidden_states（即self attention的输出）直接送到MLP就可以了。
@@ -1346,7 +1346,7 @@ MLP：指FFN前馈神经网络，是transformer中除了self attention之外的�
 现在MoE将MLP分为了各个专家（deepseek中还将专家分为了 *共享专家(所有token全部使用)* 以及 *路由专家(token分发)* 两种）。MoE中每个token需要经过门控网络(**Router**)，计算出每个**专家的权重**，然后根据权重将token送到对应的**专家中计算，计算过程依然是MLP**。最后再多个专家计算出来的**weight做一个加权和**然后再输出。  
 
 ### 62. 以上MoE kernel的潜在优化点？
-![](../../posts/Figure/Interview/62.png)
+![](./Figure/Interview/62.png)
 
 先讲单卡：
 1. routered expert（上图中间红框）的优化：**不同路由专家间的权重计算可以采用Group GEMM**来加速，并且可以**融合Swiglu**的做融合算子减小launch开销。
@@ -1375,21 +1375,21 @@ MLP：指FFN前馈神经网络，是transformer中除了self attention之外的�
 
 **训练要用高精度FP32,BF16；推理低精度即可FP16，INT8**
 
-![](../../posts/Figure/Interview/63.png)
+![](./Figure/Interview/63.png)
 
 ### 64. 我们都知道随着句子长度seqlen的增加，似乎transformer的计算量越来越多，那么对于encoder而言，seqlen的增加，计算量、访存量和计算密度是一直增加吗？对于decoder呢？
 [参考论文](https://arxiv.org/abs/2302.14017)
 
 encoder(bert)和decoder(gpt2)的**计算量**和**访存量**随seqlen的变化:
 
-![](../../posts/Figure/Interview/64.png)
+![](./Figure/Interview/64.png)
 
 1. 左图显示二者计算量随seqlen是线性增加的。
 2. 右图显示二者访存量GPT2是增加很多的，原因是decode是生成式模型，随着seqlen的增加，生成下一个token需要访问的kv cache会越来越多。
 
 
 encoder(bert)和decoder(gpt2)的**计算密度**（=计算量/访存量）随seqlen的变化：
-![](../../posts/Figure/Interview/64_2.png)
+![](./Figure/Interview/64_2.png)
 
 3. 这里有个有趣的现象，**bert的计算密度是先增大后减小的**，为什么呢？
 
@@ -1402,7 +1402,7 @@ encoder(bert)和decoder(gpt2)的**计算密度**（=计算量/访存量）随seq
 ### 65. Flash attention V1解决了什么问题，它可以直接用于推理吗？
 详细见[Flashattention.md](https://summer536.github.io/Notes/zh/notes/ai-infra/flashattention.html)
 
-![](../../posts/Figure/Interview/65.png)
+![](./Figure/Interview/65.png)
 上图self attention算子中如果不做算子融合，他们都是[seqlen, seqlen]的中间buffer，占用的显存空间很大的。Flash attention V1做的就是做这些算子的融合。
 
 **不可以直接用于推理，后续有专门的flash-decoding 来做推理上的优化（本质上是在K len维度做了并行）。** 见81题。
@@ -1412,20 +1412,20 @@ encoder(bert)和decoder(gpt2)的**计算密度**（=计算量/访存量）随seq
 
 如下，在该机制提出之前，kv cache只有**不超过40%的存储用来存储token的hidden states**，其它空间为**预留的空间**、**内部碎片**(kv cache为max seq len而留）、**外部碎片**（主要是new malloc造成的）
 
-![](../../posts/Figure/Interview/66.png)
+![](./Figure/Interview/66.png)
 
 ### 67. vLLM提出的kv cache管理机制具体是怎么样的机制？
 **以block为粒度来管理kv cache**，block size为一个block的slot数量，一个slot代表一个token的hidden units，如下所示，这种情况下，最多浪费最后一个block的容量，即block3的剩余未填满的slots，相比之前，极大的减小了浪费的显存。
 
-![](../../posts/Figure/Interview/67_1.png)
-![](../../posts/Figure/Interview/67_3.png)
+![](./Figure/Interview/67_1.png)
+![](./Figure/Interview/67_3.png)
 
 如上图，blocksize设置为了4，它仅仅浪费了Block3的3个slots，以及Block5的1个slots。
 
 ### 68. 如果decoding algorithm为beam search，vLLM会对kv cache如何管理？
 Bearm search现在关注度比较低了，看看就行
-![](../../posts/Figure/Interview/68_1.png)
-![](../../posts/Figure/Interview/68_2.png)
+![](./Figure/Interview/68_1.png)
+![](./Figure/Interview/68_2.png)
 假如beam width=4，基于**shared block**和**copy on write block机制**，block0为4个候选人shared的block，因为 此刻4个候选人的内容是一样的，比如都是"你是吴彦祖"；下一个时刻，候选人3开始分叉，说明它的生成内容和另外三个不同了，比如候选人012此时为"你是吴彦祖，那我是谁"，候选人3为"你是吴彦祖，你好帅啊"；下一个时刻，类似；下一个时刻，4个候选人生成的内容都不一样了，所以通过copy on write生成了block5和7，此时候选人0的句子的kv就保存在block0135，候选人2的句子的kv就保存在block0137；下一个时刻，候选人1和2的两个beam为4*4=16个beam中的top4，被选中继续做beam search，于是，之前候选人0和3的block5和block8就没用了，引用计数为0，被释放掉。
 由此来最大程度节约kv cache block的分配。
 
@@ -1434,7 +1434,7 @@ Bearm search现在关注度比较低了，看看就行
 
 **continuous batching = iteration level schedule**
 
-![](../../posts/Figure/Interview/69.png)
+![](./Figure/Interview/69.png)
 
 ### 70. 介绍一下iteration level schedule？
 
@@ -1504,7 +1504,7 @@ V2: 交换循环顺序，**Q的行为外循环，KV的列为内循环**，一次
 1. **非矩阵乘法部分的计算量得到了减少**，具体在于v1在每次k列循环后，得到了新的m（x_max) 和l (sum(exp(x-m)), 然后会去更新上一个循环对应block的分子处的m以及分母处的l，v2发现没有必要每次k列循环都先更新l后参与P * V，只需在最后一次循环完成l的更新后再去作为O的分母即可。（即V2只考虑一次softmax的分母计算，在最后一步算一次即可）
 
 2. **优化warps在QK矩阵上的读写，从而减少了warp间的额外通信**，如下图，v2中，warp1-4均可以访问一整个k_len，那么在QK * V的过程中，无需做warp之间的reduce，然而对于v1，则需要warp1-4做warp间的reduce，最终才能得到O结果
-![](../../posts/Figure/Interview/79_3.png)
+![](./Figure/Interview/79_3.png)
 
 3. **对seqlen维度充分并行**，主要考虑到batchsize*numheads小于SM个数的情况下，无法打满SM算力，此时seqlen一般都很大，需要对seqlen维度充分并行。主要的实现就是在于FlashAttention-2将Q移到了外循环，KV移到了内循环，由于改进了算法使得warps之间不再需要相互通信去处理Q，所以外循环可以放在不同的block上。
 
@@ -1519,7 +1519,7 @@ V2: 交换循环顺序，**Q的行为外循环，KV的列为内循环**，一次
 1. **K len维度的充分并行**。推理阶段，attention中**q*k^T**部分的shape变换为[batch size, num heads, **q_len, head dim**]x[batch size, num heads, **head dim, k_len**], 其中**k_len表示上下文长度**，比如多轮对话的时候，你与gpt的第五轮对话，此时k_len等于之前所有轮次你方的句子长度+gpt方吐出的句子长度，而**q_len仅仅为当前第五轮你方的句子长度**，因此k_len此刻一般远大于q_len，而v1没有在k_len维度分配多个block并行处理，只在q_len维度分配了q_len个block，以及batch size维度分配batch size个block，以及num heads维度分配num heads个block,**如果此时刚好位于大模型推理的decode阶段，那么q_len为1**，再加上batch size比较小，那么这显然不能充分利用SM资源，所以flash decoding在k_len维度分配多个block来并行处理一部分seq，最终每个block做一个额外的reduce，把结果聚合起来，才是最终的O结果，这个也叫做splitK。
 
 2. 在batch size越小，q len越小，k len越大的场景，提升最大。
-![](../../posts/Figure/Interview/81.png)
+![](./Figure/Interview/81.png)
 
 ### 82. flash attention v3优化了啥？
 [FlashAttention-V3解读之Hopper GPU版FlashAttention (上篇)](https://mp.weixin.qq.com/s/cclvT7PxQzdkm9nYfWbhmQ)
@@ -1539,9 +1539,9 @@ Flash attention V3主要是对Hopper架构的优化，其他与V2一样。
 
 ### 83. 举出大模型应用领域shared prefix的出现场景
 **System prompt**：
-![](../../posts/Figure/Interview/82_1.png)
+![](./Figure/Interview/82_1.png)
 **多轮对话**
-![](../../posts/Figure/Interview/82_2.png)
+![](./Figure/Interview/82_2.png)
 
 ### 83.1 为什么要进行prefix cache优化？
 [[Prefill优化][万字]🔥原理&图解vLLM Automatic Prefix Cache(RadixAttention): 首Token时延优化](https://zhuanlan.zhihu.com/p/693556044)
@@ -1562,7 +1562,7 @@ SGLang 的基数树并不是一开始就把每个 token 单独存储，而是把
 
 ### 83.2 vLLM的Hash RadixAttention（自动前缀缓存）与SGLang的RadixAttention在实现原理、工程设计和性能表现上的核心区别总结？
 
-![](../../posts/Figure/Interview/83_2.png)
+![](./Figure/Interview/83_2.png)
 
 ### 84. 如何推导Radix attention 或者shared prefix decomposing attention的正确性？
 步骤：
@@ -1570,7 +1570,7 @@ SGLang 的基数树并不是一开始就把每个 token 单独存储，而是把
 2. new_q_len * new_kv; apply Flash attention
 3. reduce or merge states(把1和2算出来的hidden state reduce一下)
 
-![](../../posts/Figure/Interview/84.png)
+![](./Figure/Interview/84.png)
 
 可以看到方程8就是对应的reduce操作，记住就好。
 Chunk attention:
@@ -1588,7 +1588,7 @@ A.一次multi query attention （右下图）
 B.两次single query attention （右下图第三行只有一个蓝色方块的情况）
 
 **C.一次multi query attention+两次single query attention，而后把结果reduce or merge**
-![](../../posts/Figure/Interview/85.png)
+![](./Figure/Interview/85.png)
 
 答案：C，documentQA本身就有一个内置的prompt，而两个请求又有各自自己的prompt，因此我们需要先用一次MQA将公有的第一个prompt计算出来，然后在使用两次SQA分别计算各自独有的prompt，最后把结果reduce or merge。
 
@@ -1602,27 +1602,27 @@ B.两次single query attention （右下图第三行只有一个蓝色方块的�
 [Deep dive vLLM和SGLang推理框架的CPU开销](https://mp.weixin.qq.com/s/ZH6vzQFg9NNoPRyTgtdY4Q?token=474473637&lang=zh_CN)
 
 nsight-system/torchprof查看:
-![](../../posts/Figure/Interview/86.png)
+![](./Figure/Interview/86.png)
 
 红框内是GPU没有运行的时间。
 
 那么vLLM的cpu开销体现在哪里呢？主要是准备数据（红色和绿色）以及detokenize（粉色）。
-![](../../posts/Figure/Interview/86_2.png)
+![](./Figure/Interview/86_2.png)
 看起来这些操作是没法省的，那么如何优化呢？一个经典的思路就是我们可以在GPU运行的时候就做这些操作，以掩盖这些cpu开销。（下一题的SGlang就是这么做的）
 
 ### 87. SGlang是如何解决vLLM的cpu开销问题的？
 
-![](../../posts/Figure/Interview/87.png)
+![](./Figure/Interview/87.png)
 
 1.总体来看，大模型推理都可以分为三步：a.从tokenizer进程（tokenize manager里面）接受过来的请求、b.step forward、c.push result到detoken
 
 **SGlang将这三步放在三个进程中，以实现异步执行。**（依赖关系怎么办呢？使用cpu的进程同步就好。比如当拿到tokenizer的结果后，forward的进程立刻收到同步然后开始执行forward。）
 
 2.进一步讲step forward内部，每个step的forward之间仍然会进行复杂的batch schedule策略（上图的绿色部分），包括计算此step的batch size、分配kv cache，这部分schedule策略在内部没有和model forward异步起来，**依赖在于scheduler需要token id，这依赖于上一个step的fwd结果**，但是scheduler（*它不需要确定的知道tokenid是什么，只需要知道token得数量即可*）真正需要的token数量，而我们decoder阶段的token为1，这完全可以提前就知道，不需要等待上一个step出现结果，那么由此**scheduler和model forward就可以并行**（下图的Overlapped scheduler）
-![](../../posts/Figure/Interview/87_1.png)
-![](../../posts/Figure/Interview/87_2.png)
-<!-- ![](../../posts/Figure/Interview/87_3.png)
-![](../../posts/Figure/Interview/87_4.png) -->
+![](./Figure/Interview/87_1.png)
+![](./Figure/Interview/87_2.png)
+<!-- ![](./Figure/Interview/87_3.png)
+![](./Figure/Interview/87_4.png) -->
 
 ### 88. 为什么模型吞吐随batchsize的增大而增大？
 1. **并行计算效率提升**
@@ -1650,7 +1650,7 @@ nsight-system/torchprof查看:
 Sglang：
 用户端 + 服务端（Tokenlize，Forward，Detokenize）
 
-![](../../posts/Figure/Interview/90.png)
+![](./Figure/Interview/90.png)
 
 TVM等非大模型推理引擎/编译器：
 
@@ -1659,7 +1659,7 @@ TVM等非大模型推理引擎/编译器：
 通过一系列Relay Passes去优化图；通过AutoTVM来控制图上的一些算子；图优化完成后再降级为更低层次的表示，然后还有一些passes处理低层次的表示。然后再进行代码生成（Target translation）来生成runtime类型的IR，被一些LLVM/TensorRT等编译器接收。
 
 
-![](../../posts/Figure/Interview/90_1.png)
+![](./Figure/Interview/90_1.png)
 
 
 ## 八. Leetcode
@@ -1743,7 +1743,7 @@ __global__ void reduce_v2(float* input, float* output, int N) {
 ```
 2. Transpose
 
-![](../../posts/Figure/Interview/94_1.png)
+![](./Figure/Interview/94_1.png)
 ```cpp
 __global__ void transpose(float* input, float* output) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1777,7 +1777,7 @@ __global__ void transpose(float* input, float* output) {
 }
 ```
 3. Softmax
-![](../../posts/Figure/Interview/94_2.png)
+![](./Figure/Interview/94_2.png)
 
 
 

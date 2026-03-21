@@ -8,8 +8,13 @@ export const zhNavbar = navbar([
     link: "/zh/notes/",
   },
   {
-    text: "Book",
+    text: "项目实践",
     icon: "code",
+    link: "/zh/projects/",
+  },
+  {
+    text: "Book",
+    icon: "book",
     link: "/zh/book/",
   },
   {

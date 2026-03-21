@@ -14,6 +14,10 @@ export const zhSidebar = sidebar({
           link: "ai-infra/",
         },
         {
+          text: "论文浅读",
+          link: "papers/",
+        },
+        {
           text: "CUDA",
           link: "cuda/",
         },
@@ -24,8 +28,13 @@ export const zhSidebar = sidebar({
       ],
     },
     {
-      text: "Book",
+      text: "项目实践",
       icon: "code",
+      link: "/zh/projects/",
+    },
+    {
+      text: "Book",
+      icon: "book",
       link: "/zh/book/",
     },
     {

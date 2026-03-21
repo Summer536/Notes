@@ -38,7 +38,7 @@ Decode 阶段 是从第一个预测 token 开始，逐步生成后续 token 的�
   - **每步只处理一个 token（意味着对于同一个序列，无法并行）**
   - 利用 KV Cache 实现高效 attention
 
-![](../../posts/Figure/inference/static_batch.png)
+![](./Figure/inference/static_batch.png)
 
 ### 3. 为什么需要分开 Prefill 和 Decode 两个阶段？
 1. 计算模式不同，**前者可并行，后者不可并行**
@@ -69,7 +69,7 @@ Batch size 是每次处理请求的序列数量。
 
 例如下图，我们将四个用户的请求收集起来，组成一个batch，然后进行推理。此时 **batch size = 4**。
 如果我们设置batch size = 3，那么它只会收集前三个用户的请求然后处理，处理完成后第四个请求组成一个新的batch开始处理。
-![](../../posts/Figure/inference/batchsize.png)
+![](./Figure/inference/batchsize.png)
 
 这里注意，一个batch中的不同序列可以有不同的长度。而不同长度也同时造成了GPU并行处理的困难。
 
@@ -84,7 +84,7 @@ Padding 带来的问题：
 
 ### 3. 什么是动态批(dynamic batching)处理技术？
 上面第2点讲到，在decoder阶段，GPU会并行处理一个batch中的多个序列，这些序列生成回答的长度是不同的。如果一个batch中所有序列都生成完了，GPU才会处理下一个batch。
-![](../../posts/Figure/inference/dynamic_batch.png)
+![](./Figure/inference/dynamic_batch.png)
 
 那么举一个极端的例子，假如batchsize = 4，我们同时处理4个序列的推理生成，其中3个序列只回答了50个token，而有1个序列回答了5000个token。那么GPU必须等待这一个序列生成完毕，才能接受新的batch也就是4个新的序列。这就造成了极大的资源浪费。
 
@@ -97,7 +97,7 @@ Padding 带来的问题：
 6. 完成的序列位置可以被新请求替代 → 形成新的 batch
 7. 这个过程不断循环，保持 GPU 高利用率
 
-![](../../posts/Figure/inference/dynamic_batch2.png)
+![](./Figure/inference/dynamic_batch2.png)
 
 上图显示了通过连续批处理技术连续完成 7 个序列的推理情况。左图显示了第一次迭代后的批次，右图显示了几次迭代后的批次。每当一个序列发出终止 token 时，我们会将一个新的序列插入其位置（例如序列 S5、S6 和 S7），这样 GPU 无需等待所有序列完成即可开始处理新的序列，从而实现更高的 GPU 利用率。
 
@@ -193,13 +193,13 @@ Padding 带来的问题：
 
 我们看性能分析结果，下图是一个 encoder-decoder 结构网络的时间分解图。顶部一行显示了 $\gamma=7$ 的投机采样，中间一行显示了 $\gamma=3$ 的投机解码，$\gamma$ 是小模型一次生成 token 的数目。$M_p$ 是大模型，$M_q$ 是小模型。可见，使用投机采样，解码时间大幅缩减。
 
-![](../../posts/Figure/inference/Ssampling.png)
+![](./Figure/inference/Ssampling.png)
 
 
 ### 不同的投机采样策略
 除了采用大小模型外，还有其他的一些方法进行投机推理,如线性头方案、前缀树方案。
 
-![](../../posts/Figure/inference/Ssampilng1.png)
+![](./Figure/inference/Ssampilng1.png)
 
 ### 投机解码是如何起作用的？为什么在高并发下没有甚至倒退？
 投机解码本身是解决推理过程中的memory Bound的问题的。而在高并发下，推理变成了一个compute Bound的问题，因此效果不明显。

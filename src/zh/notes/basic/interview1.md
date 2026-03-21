@@ -55,7 +55,7 @@ QNN (Qualcomm Neural Network) 主要是基于一些 Qualcomm Snapdragon 平台�
 **预分配策略**：KV cache在模型初始化时一次性分配整个max_seq_len的空间（因此都在大内存池中）
 
 内存复用：同一个cache缓冲区在整个推理过程中重复使用
-![](../../posts/Figure/Interview/T_5.png)
+![](./Figure/Interview/T_5.png)
 
 
 **kv cache如何做更新的呢？**
@@ -171,13 +171,13 @@ AutoRound：是一种**逼近全参数微调（FPQ）的PTQ方法**。将舍入�
 
 确实代码是对N卡的适配，但是这个优化的思想是共通的。NPU也有对应的片上缓存，也可以做相应的算法适配。
 
-![](../../posts/Figure/Interview/T6.png)
+![](./Figure/Interview/T6.png)
 
 #### 4.2 N卡上主要是对share mem做的一些优化，那么对应到NPU上，是对应哪个层级？
 
 NVIDIA GPU上优化所依赖的**Shared Memory，在昇腾NPU上最主要对应的是 L1 Buffer（也称为Unified Buffer）**。二者一个重要的区别是：Shared Memory需要程序员手动管控，Unified Buffer是自动管理的。（手动挡 vs 自动挡）
 
-![](../../posts/Figure/Interview/T10_1.png)
+![](./Figure/Interview/T10_1.png)
 
 ### 5. 大模型推理的算子写过哪些？
 softmax, gemm, rmsnorm ....

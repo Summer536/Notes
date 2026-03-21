@@ -76,18 +76,18 @@ isOriginal: true
 ### AF的核心观点：
 1. **decoding阶段的最大开销来自于attention的设计**，见如下table6，而不是总参数量或者moe的激活参数量（论文有数据支撑）
 
-![](../../posts/Figure/AF/1.png)
+![](./Figure/AF/1.png)
 
 2. attention的decoding开销不仅仅来自于kv cache，还有计算访存比，有的对于某些硬件来说太高了，导致计算量严重拖累了decoding速度，因此**需要根据不同的硬件特点设计attention**，比如MLA 512的计算访存比在h800上面性能很不错，但是一到h20或者a800就会存在计算访存比过高的情况。为此step3设计出了MFA，可以较为均衡的支持多种硬件（论文有数据支撑）
 
-![](../../posts/Figure/AF/2.png)
+![](./Figure/AF/2.png)
 
 3. 和2一样，**MoE部分也需要根据不同的硬件特点来设计**，MoE的稀疏度需要综合考虑硬件的算力、显存带宽和通信带宽，没那么稀疏的话可能会造成无法掩盖通信开销，过于稀疏的话可能打不高MoE部分的MFU（论文有公式推导）
 
 4. AFD部署，**attention和FFN在decoding阶段存在不同的特点，前者和context length相关，后者和context length无关**，因此可以分而治之，**使得后者在足够batchsize的情况下可以实现高MFU**，并且attention实例可以通过很容易的scaling来handle动态context length，不影响到FFN。
 
-    ![](../../posts/Figure/AF/3.png)
-    ![](../../posts/Figure/AF/4.png)
+    ![](./Figure/AF/3.png)
+    ![](./Figure/AF/4.png)
 
 
 ### AF的精彩之处：
