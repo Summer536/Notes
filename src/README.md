@@ -3,48 +3,30 @@ home: true
 layout: Blog
 icon: house
 title: Blog Home
-# heroImage: https://theme-hope-assets.vuejs.press/logo.svg
 heroImage: /YQ_logo1.png
-heroText: The name of your blog
-tagline: You can put your slogan here
+bgImage: /assets/images/cover3.jpg
+heroText: Recording what I learn and sharing technical notes
 heroFullScreen: true
 projects:
   - icon: folder-open
-    name: project name
-    desc: project detailed description
-    link: https://your.project.link
+    name: Notes
+    desc: Technical notes organized into AI infra, paper reading, CUDA, and fundamentals
+    link: /notes/
 
-  - icon: link
-    name: link name
-    desc: link detailed description
-    link: https://link.address
+  - icon: code
+    name: Projects
+    desc: Personal projects and hands-on practice
+    link: /projects/
 
   - icon: book
-    name: book name
-    desc: Detailed description of the book
-    link: https://link.to.your.book
+    name: Book
+    desc: Reading notes and reflections
+    link: /book/
 
-  - icon: newspaper
-    name: article name
-    desc: Detailed description of the article
-    link: https://link.to.your.article
-
-  - icon: user-group
-    name: friend name
-    desc: Detailed description of friend
-    link: https://link.to.your.friend
-
-  # - icon: https://theme-hope-assets.vuejs.press/logo.svg
-  - icon: /YQ_logo1.png
-    name: custom item
-    desc: Detailed description of this custom item
-    link: https://link.to.your.friend
+  - icon: profile
+    name: About
+    desc: Profile and contact information
+    link: /about/
 
 footer: customize your footer text
 ---
-
-This is a blog home page demo.
-
-To use this layout, you should set both `layout: Blog` and `home: true` in the page front matter.
-
-For related configuration docs, please see [blog homepage](https://theme-hope.vuejs.press/guide/blog/home.html).

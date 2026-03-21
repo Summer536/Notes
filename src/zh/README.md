@@ -16,7 +16,7 @@ header:
 projects:
   - icon: folder-open
     name: 学习笔记
-    desc: 按 AI infra、论文浅读、CUDA、基础知识分类整理的技术笔记
+    desc: AI infra、论文浅读、CUDA、基础知识分类整理
     link: /zh/notes/
 
   - icon: code

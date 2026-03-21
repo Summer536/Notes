@@ -4,23 +4,43 @@ export const enSidebar = sidebar({
   "/": [
     "",
     {
-      text: "Demo",
-      icon: "laptop-code",
-      prefix: "demo/",
-      link: "demo/",
-      children: "structure",
+      text: "Notes",
+      icon: "folder-open",
+      prefix: "notes/",
+      link: "notes/",
+      children: [
+        {
+          text: "AI infra",
+          link: "ai-infra/",
+        },
+        {
+          text: "Paper Reading",
+          link: "papers/",
+        },
+        {
+          text: "CUDA",
+          link: "cuda/",
+        },
+        {
+          text: "Fundamentals",
+          link: "basic/",
+        },
+      ],
     },
     {
-      text: "Articles",
+      text: "Projects",
+      icon: "code",
+      link: "/projects/",
+    },
+    {
+      text: "Book",
       icon: "book",
-      prefix: "posts/",
-      children: "structure",
+      link: "/book/",
     },
-    "intro",
     {
-      text: "Slides",
-      icon: "person-chalkboard",
-      link: "https://ecosystem.vuejs.press/plugins/markdown/revealjs/demo.html",
+      text: "About",
+      icon: "profile",
+      link: "/about/",
     },
   ],
 });
