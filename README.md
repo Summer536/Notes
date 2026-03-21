@@ -20,7 +20,7 @@
    ```bash
    git add .
    git commit -m "更新说明"
-   git push
+   git push -v
    ```
 
 5. **等待部署**：
