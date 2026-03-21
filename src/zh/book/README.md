@@ -1,7 +1,8 @@
 ---
 title: Book
 index: false
-icon: code
+icon: book
+article: false
 category:
   - 随记
 ---
@@ -10,14 +11,6 @@ category:
 
 这里记录一些读书感悟、片段摘录和阅读过程中的随手笔记。
 
-## 这个栏目准备放什么
+## 笔记列表
 
-- 读书后的核心观点总结
-- 值得反复回看的段落摘录
-- 和技术学习、职业发展相关的感受记录
-
-## 当前状态
-
-这个页面目前先作为入口页保留，后续可以在 `src/zh/book/` 下继续新增读书笔记页面。
-
-_后续如果你想，我可以继续把这个栏目做成“书单页 + 每本书独立页面”的结构。_
+- [《延迟满足》读书随记](https://summer536.github.io/Notes/zh/book/delay-gratification.html) - 关于自控力、长期主义与行为习惯的阅读记录

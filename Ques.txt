@@ -55,3 +55,7 @@ Gemm - GEMM优化、Reduce - Reduce优化、CUDA技术栈 - CUDA并行计算平�
 请把所有文章对应的创建好（内容可以先不翻译）
 
 英文页面的Notes、Projects等链接没法点击，点进去之后便是404 Notfound。请解决这个问题
+
+下面我想将项目实践和Book的两个文件也按照学习笔记一样的页面设置
+并且我要在项目实践中写一个Openclaw.md来讲述Mac如何安装Openclaw
+在Book中添加一个笔记来随记《延迟满足》这本书的读书随记
