@@ -1,25 +1,25 @@
 import { navbar } from "vuepress-theme-hope";
 
 export const enNavbar = navbar([
-  "/",
+  "/en/",
   {
     text: "Notes",
     icon: "folder-open",
-    link: "/notes/",
+    link: "/en/notes/",
   },
   {
     text: "Projects",
     icon: "code",
-    link: "/projects/",
+    link: "/en/projects/",
   },
   {
     text: "Book",
     icon: "book",
-    link: "/book/",
+    link: "/en/book/",
   },
   {
     text: "About",
     icon: "profile",
-    link: "/about/",
+    link: "/en/about/",
   },
 ]);

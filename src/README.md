@@ -11,22 +11,22 @@ projects:
   - icon: folder-open
     name: Notes
     desc: Technical notes organized into AI infra, paper reading, CUDA, and fundamentals
-    link: /notes/
+    link: /en/notes/
 
   - icon: code
     name: Projects
     desc: Personal projects and hands-on practice
-    link: /projects/
+    link: /en/projects/
 
   - icon: book
     name: Book
     desc: Reading notes and reflections
-    link: /book/
+    link: /en/book/
 
   - icon: profile
     name: About
     desc: Profile and contact information
-    link: /about/
+    link: /en/about/
 
 footer: customize your footer text
 ---

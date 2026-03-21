@@ -1,13 +1,13 @@
 import { sidebar } from "vuepress-theme-hope";
 
 export const enSidebar = sidebar({
-  "/": [
+  "/en/": [
     "",
     {
       text: "Notes",
       icon: "folder-open",
       prefix: "notes/",
-      link: "notes/",
+      link: "/en/notes/",
       children: [
         {
           text: "AI infra",
@@ -30,17 +30,17 @@ export const enSidebar = sidebar({
     {
       text: "Projects",
       icon: "code",
-      link: "/projects/",
+      link: "/en/projects/",
     },
     {
       text: "Book",
       icon: "book",
-      link: "/book/",
+      link: "/en/book/",
     },
     {
       text: "About",
       icon: "profile",
-      link: "/about/",
+      link: "/en/about/",
     },
   ],
 });
