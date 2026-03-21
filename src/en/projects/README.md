@@ -10,7 +10,7 @@ category:
 
 ## Project Overview
 
-This project implements a CUDA-based image processing system for high resolution images, including filtering, edge detection, and image enhancement. It is designed to make practical use of GPU parallelism for substantial speedups over CPU implementations.
+This project describes a CUDA-based image processing system for high-resolution images, including filtering, edge detection, and enhancement. The goal is to make practical use of GPU parallelism and turn performance work into a concrete engineering project.
 
 ## Tech Stack
 
@@ -21,4 +21,4 @@ This project implements a CUDA-based image processing system for high resolution
 
 ## System Architecture
 
-The English section mirrors the Chinese site structure first. You can later add project figures and a more complete English write-up under `src/en/projects/`.
+The English section now mirrors the Chinese structure. A fuller English project write-up can be added later if needed.

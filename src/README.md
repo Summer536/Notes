@@ -5,7 +5,7 @@ icon: house
 title: Blog Home
 heroImage: /YQ_logo1.png
 bgImage: /assets/images/cover3.jpg
-heroText: Recording what I learn and sharing technical notes
+heroText: Notes on systems, GPUs, and practical engineering
 heroFullScreen: true
 projects:
   - icon: folder-open

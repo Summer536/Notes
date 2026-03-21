@@ -5,7 +5,7 @@ icon: profile
 
 ## Profile
 
-Hello! I am Yuqing Gao, a software engineer who enjoys building and learning technical systems. My current focus is high performance computing (HPC) and GPU programming, especially CUDA.
+Hello! I am Yuqing Gao, a software engineer with a strong interest in systems, performance, and technical writing. My recent work and study focus on high performance computing (HPC), GPU programming, and large model inference.
 
 ### Areas of Interest
 
@@ -23,9 +23,9 @@ Hello! I am Yuqing Gao, a software engineer who enjoys building and learning tec
 
 I use this site to:
 
-1. Record what I learn
-2. Share notes on HPC and CUDA related topics
-3. Organize technical material for future review
+1. keep a structured record of what I learn
+2. share notes on HPC, CUDA, and AI infrastructure
+3. turn scattered knowledge into something easier to revisit
 
 ## Contact
 

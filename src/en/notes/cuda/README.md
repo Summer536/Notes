@@ -6,8 +6,10 @@ article: false
 
 # CUDA
 
-This folder is for notes on CUDA programming, operator optimization, and parallel computing.
+This folder collects notes on CUDA programming, kernel optimization, and parallel computing.
 
-## Current Status
+## Notes
 
-The English section currently mirrors the Chinese site structure first. Detailed English CUDA notes can be added later under `src/en/notes/cuda/`.
+- [CUDA Tech Stack](https://summer536.github.io/Notes/notes/cuda/cuda-tech-stack.html) - CUDA basics and topic map
+- [GEMM](https://summer536.github.io/Notes/notes/cuda/gemm.html) - GEMM optimization notes
+- [Reduce](https://summer536.github.io/Notes/notes/cuda/reduce.html) - Reduce optimization notes

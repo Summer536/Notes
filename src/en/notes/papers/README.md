@@ -10,4 +10,4 @@ This folder is for brief reading notes on classic papers, key ideas, and related
 
 ## Current Status
 
-The English section currently mirrors the Chinese site structure first. Specific English paper notes can be added later under `src/en/notes/papers/`.
+The folder is ready. You can add individual English paper notes under `src/en/notes/papers/` at any time.

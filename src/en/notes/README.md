@@ -9,7 +9,7 @@ category:
 
 # Notes
 
-This section collects my technical notes and organizes them into four subfolders for easier browsing.
+This section collects my technical notes and groups them into four folders for easier browsing.
 
 ## Categories
 

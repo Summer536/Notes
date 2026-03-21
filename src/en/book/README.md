@@ -12,4 +12,4 @@ This section is for reading notes, reflections, highlights, and short takeaways 
 
 ## Current Status
 
-The English section mirrors the Chinese site structure first. You can later add individual English reading notes under `src/en/book/`.
+The section is ready, and individual English reading notes can be added later under `src/en/book/`.
