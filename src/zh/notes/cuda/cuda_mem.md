@@ -1,5 +1,5 @@
 ---
-title: Cuda Mem
+title: CUDA内存分配函数介绍
 date: 2026-03-24
 readingTime: 300
 category:

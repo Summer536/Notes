@@ -50,8 +50,16 @@ export const zhSidebar = sidebar({
       link: "/zh/book/",
       children: [
         {
-          text: "《延迟满足》读书随记",
-          link: "delay-gratification/",
+          text: "历史",
+          link: "history/",
+        },
+        {
+          text: "思考与价值",
+          link: "thought-and-value/",
+        },
+        {
+          text: "投资",
+          link: "investing/",
         },
       ],
     },
