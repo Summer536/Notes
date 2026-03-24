@@ -7,7 +7,7 @@ category:
 tag:
   - GPU优化
 # cover: /assets/images/cover3.jpg
-isOriginal: true
+isOriginal: false
 ---
 
 # CUDA内存分配函数 
@@ -20,7 +20,7 @@ isOriginal: true
 
 2. 需要CPU和GPU共用数据，少写代码、简化编程 => 选cudaMallocManaged + 2MB大页表；
 
-3. 频繁分配、释放内存（比如AI批次推理、训练）=> 选cudaMallocAsync，遵守32MB对齐；
+3. 频繁分配、释放内存（比如AI批次推理、训练）=> 选cudaMallocAsync，遵守32MB对齐。
 
 <!-- more -->
 
