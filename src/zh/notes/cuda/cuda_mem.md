@@ -283,3 +283,5 @@ cudaMemPoolDestroy(pool);
 
 - [CUDA内存分配之cudaMalloc/cudaMallocManaged/cudaMallocAsync详解](https://mp.weixin.qq.com/s/-V7cCt51EE_e0O68AaWt0g)
 - [【CUDA编程】流式有序内存分配（Stream Ordered Memory Allocator）](https://zhuanlan.zhihu.com/p/677268397)
+- [CUDA 统一内存：让 GPU 与 CPU 协作无间的魔法](https://zhuanlan.zhihu.com/p/25791270092)
+- [CUDA Programming Guide-4.1 Unified Memory](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/unified-memory.html)
