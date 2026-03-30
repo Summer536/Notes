@@ -10,6 +10,7 @@ article: false
 
 ## 笔记列表
 
+- [量化](https://summer536.github.io/Notes/zh/notes/ai-infra/quantize.html)- 大模型量化的方法介绍
 - [Deepseek MLA](https://summer536.github.io/Notes/zh/notes/ai-infra/Deepseek_MLA.html) - MLA 机制及其实现方法介绍
 - [Step3 AF](https://summer536.github.io/Notes/zh/notes/ai-infra/Step3_AF.html) - Step3 AF 分离推理系统 vs. DeepSeek EP 推理系统
 - [AWQ](https://summer536.github.io/Notes/zh/notes/ai-infra/AWQ.html) - AWQ 激活感知的权重量化
