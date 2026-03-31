@@ -10,6 +10,7 @@ article: false
 
 ## 笔记列表
 
+- [nvFP4](https://summer536.github.io/Notes/zh/notes/cuda/nvfp4.html) - nvFP4的介绍以及与mxFP4的对比
 - [Hopper](https://summer536.github.io/Notes/zh/notes/cuda/Hopper.html) - Hopper架构的新特性
 - [CUDA_mem_Malloc](https://summer536.github.io/Notes/zh/notes/cuda/cuda_mem.html) - CUDA常用分配内存方法
 - [Gemm](https://summer536.github.io/Notes/zh/notes/cuda/gemm.html) - GEMM 优化
